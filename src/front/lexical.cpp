@@ -265,6 +265,14 @@ bool frontend::DFA::next(char input, Token& buf) {
             cur_state = frontend::State::Ident;
             cur_str = input;
         }
+        // 如果读入字符为"."，说明这是以小数点开头的浮点数，那么输出之前的运算符，然后转移到FloatLiteral状态
+        else if(char_state == frontend::State::FloatLiteral){
+            buf.type = frontend::get_op_TokenType(cur_str);
+            buf.value = cur_str;
+            ret = true;
+            cur_state = frontend::State::FloatLiteral;
+            cur_str = input;
+        }
         //如果为empty
         else if(char_state == frontend::State::Empty){
             buf.type = frontend::get_op_TokenType(cur_str);
