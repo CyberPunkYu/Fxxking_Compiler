@@ -4,6 +4,8 @@
 #include <string>
 #include <iostream>
 
+// 为了实验三翻译为汇编更加方便
+// 全局变量必须通过 ir::Program 中的 std::vector<GlobalVal> globalVal 来传递
 
 ir::Program::Program(): functions(std::vector<ir::Function>()) {}
 

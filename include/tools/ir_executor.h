@@ -36,7 +36,7 @@ extern FILE* reopen_input_file;
  */
 int eval_int(std::string);
 
-
+// 定义了一种数据结构 ir::Value，包括了操作数的值和类型
 union _4bytes {
     int32_t ival;
     float   fval;
@@ -50,6 +50,7 @@ struct Value {
     _4bytes _val;
 };
 
+// 为一个执行中的 ir::Function 保存了其需要的基本数据包括
 // definition of function context
 struct Context {
     uint32_t pc;                            // program counter of a function
@@ -63,7 +64,7 @@ struct Context {
     Context(const ir::Function*);
 };
 
-
+// IR测评机的执行器
 // definition of ir executor
 struct Executor {
     std::ostream& out;

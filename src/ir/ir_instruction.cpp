@@ -2,18 +2,18 @@
 #include "ir/ir_operand.h"
 #include "ir/ir_operator.h"
 
-
+// 无参构造函数
 ir::Instruction::Instruction() {}
-
+// 有参构造函数
 ir::Instruction::Instruction(const Operand& op1, const Operand& op2, const Operand& des, const Operator& op)
     : op1(op1), op2(op2), des(des), op(op) {}
-
+// 传入参数调用实参
 ir::CallInst::CallInst(const Operand &op1, std::vector<Operand> paraList, const Operand &des) 
     : Instruction(op1, Operand(), des, Operator::call), argumentList(paraList) {}
-
+// 无参数调用实参
 ir::CallInst::CallInst(const Operand &op1, const Operand &des)
     : Instruction(op1, Operand(), des, Operator::call), argumentList() {}
-
+// 重写draw方法
 std::string ir::CallInst::draw() const {
     std::string res = "call " + this->des.name + ", " + this->op1.name + "(";
     for(const auto& arg: argumentList)
@@ -23,7 +23,7 @@ std::string ir::CallInst::draw() const {
     res += ")";
     return res;
 }
-
+// 重写draw方法
 std::string ir::Instruction::draw() const {
     switch (this->op) {
         case ir::Operator::_return:

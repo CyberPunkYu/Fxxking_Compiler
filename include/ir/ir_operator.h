@@ -2,8 +2,11 @@
 #define IROP_H
 
 #include <string>
-
-
+// 不用TODO，这个文件不用改
+// 对IR操作符进行定义，以枚举类的形式。
+// 与 Type 的 toString 函数类似
+// 接受一个操作符的枚举类型，返回对应字符串形式。
+// 各操作符具体含义可在 IR定义 指导书中查阅。
 namespace ir {
 
 enum class Operator {
