@@ -8,11 +8,15 @@ using ir::Operand;
 using ir::Operator;
 
 #define TODO assert(0 && "TODO");
-
+// get_child_ptr 用于获取根节点的第 index 个孩子节点，并且将其转换为 type 类型的指针，assert 用于确保转换成功
 #define GET_CHILD_PTR(node, type, index) auto node = dynamic_cast<type*>(root->children[index]); assert(node); 
+// analysis 用于对根节点的第 index 个孩子节点进行分析
 #define ANALYSIS(node, type, index) auto node = dynamic_cast<type*>(root->children[index]); assert(node); analysis##type(node, buffer);
+// copy_exp_node 用于将 from 节点的信息复制到 to 节点
 #define COPY_EXP_NODE(from, to) to->is_computable = from->is_computable; to->v = from->v; to->t = from->t;
-
+// cvt_nd_opd 用于将 node 节点转换为操作数
+#define CVT_ND_OPD(node) Operand(node->v, node->t)
+// 静态成员初始化
 map<std::string,ir::Function*>* frontend::get_lib_funcs() {
     static map<std::string,ir::Function*> lib_funcs = {
         {"getint", new Function("getint", Type::Int)},
