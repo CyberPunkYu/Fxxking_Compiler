@@ -72,9 +72,7 @@ struct AstNode{
     AstNode* parent;    // the parent node
     vector<AstNode*> children;     // children of node
 
-    /**
-     * @brief constructor
-     */
+    
     AstNode(NodeType t, AstNode* p = nullptr);
 
     /**
@@ -96,24 +94,18 @@ struct AstNode{
 struct Term: AstNode {
     Token token;
 
-    /**
-     * @brief constructor
-     */
+    
     Term(Token t, AstNode* p = nullptr);
 };
 
 
 struct CompUnit: AstNode {
-    /**
-     * @brief constructor
-     */
+    
     CompUnit(AstNode* p = nullptr);
 };
 
 struct Decl: AstNode{
-    /**
-     * @brief constructor
-     */
+    
     Decl(AstNode* p = nullptr);
 };
 
@@ -121,36 +113,28 @@ struct FuncDef: AstNode{
     string n;
     Type t;
     
-    /**
-     * @brief constructor
-     */
+    
     FuncDef(AstNode* p = nullptr);
 };
 
 struct ConstDecl: AstNode {
     Type t;
 
-    /**
-     * @brief constructor
-     */
+    
     ConstDecl(AstNode* p = nullptr);        
 };
 
 struct BType: AstNode {
     Type t;
 
-    /**
-     * @brief constructor
-     */
+    
     BType(AstNode* p = nullptr);
 };
 
 struct ConstDef: AstNode{
     std::string arr_name;
 
-    /**
-     * @brief constructor
-     */
+    
     ConstDef(AstNode* p = nullptr);
 };
 
@@ -158,27 +142,21 @@ struct ConstInitVal: AstNode{
     string v;
     Type t;
 
-    /**
-     * @brief constructor
-     */
+    
     ConstInitVal(AstNode* p = nullptr);
 };
 
 struct VarDecl: AstNode{
     Type t;
 
-    /**
-     * @brief constructor
-     */
+    
     VarDecl(AstNode* p = nullptr);
 };
 
 struct VarDef: AstNode{
     std::string arr_name;
 
-    /**
-     * @brief constructor
-     */
+    
     VarDef(AstNode* p = nullptr);
 };
 
@@ -187,44 +165,32 @@ struct InitVal: AstNode{
     string v;
     Type t;
 
-    /**
-     * @brief constructor
-     */
+    
     InitVal(AstNode* p = nullptr);
 };
 
 struct FuncType: AstNode{
-    /**
-     * @brief constructor
-     */
+    
     FuncType(AstNode* p = nullptr);
 };
 
 struct FuncFParam: AstNode{
-    /**
-     * @brief constructor
-     */
+    
     FuncFParam(AstNode* p = nullptr);
 };
 
 struct FuncFParams: AstNode{
-    /**
-     * @brief constructor
-     */
+    
     FuncFParams(AstNode* p = nullptr);
 };
 
 struct Block: AstNode{
-    /**
-     * @brief constructor
-     */
+    
     Block(AstNode* p = nullptr);
 };
 
 struct BlockItem: AstNode{
-    /**
-     * @brief constructor
-     */
+    
     BlockItem(AstNode* p = nullptr);
 };
 
@@ -233,9 +199,7 @@ struct Stmt: AstNode{
     std::set<ir::Instruction*> jump_eow;  // jump to end of while
     std::set<ir::Instruction*> jump_bow;  // jump to begin of while
 
-    /**
-     * @brief constructor
-     */
+    
     Stmt(AstNode* p = nullptr);
 };
 
@@ -244,9 +208,7 @@ struct Exp: AstNode{
     string v;
     Type t;
 
-    /**
-     * @brief constructor
-     */
+    
     Exp(AstNode* p = nullptr);
 };
 
@@ -255,9 +217,7 @@ struct Cond: AstNode{
     string v;
     Type t;
 
-    /**
-     * @brief constructor
-     */
+    
     Cond(AstNode* p = nullptr);
 };
 
@@ -267,9 +227,7 @@ struct LVal: AstNode{
     Type t;
     int i;  // array index, legal if t is IntPtr or FloatPtr
 
-    /**
-     * @brief constructor
-     */
+    
     LVal(AstNode* p = nullptr);
 };
 
@@ -278,9 +236,7 @@ struct Number: AstNode{
     string v;
     Type t;
 
-    /**
-     * @brief constructor
-     */
+    
     Number(AstNode* p = nullptr);
 };
 
@@ -289,9 +245,7 @@ struct PrimaryExp: AstNode{
     string v;
     Type t;
     
-    /**
-     * @brief constructor
-     */
+    
     PrimaryExp(AstNode* p = nullptr);
 };
 
@@ -300,25 +254,19 @@ struct UnaryExp: AstNode{
     string v;
     Type t;
 
-    /**
-     * @brief constructor
-     */
+    
     UnaryExp(AstNode* p = nullptr);
 };
 
 struct UnaryOp: AstNode{
     TokenType op;
     
-    /**
-     * @brief constructor
-     */
+    
     UnaryOp(AstNode* p = nullptr);
 };
 
 struct FuncRParams: AstNode{
-    /**
-     * @brief constructor
-     */
+    
     FuncRParams(AstNode* p = nullptr);
 };
 
@@ -327,9 +275,7 @@ struct MulExp: AstNode{
     string v;
     Type t;
 
-    /**
-     * @brief constructor
-     */
+    
     MulExp(AstNode* p = nullptr);
 };
 
@@ -338,9 +284,7 @@ struct AddExp: AstNode{
     string v;
     Type t;
 
-    /**
-     * @brief constructor
-     */
+    
     AddExp(AstNode* p = nullptr);
 };
 
@@ -349,9 +293,7 @@ struct RelExp: AstNode{
     string v;
     Type t = Type::Int;
 
-    /**
-     * @brief constructor
-     */
+    
     RelExp(AstNode* p = nullptr);
 };
 
@@ -360,9 +302,7 @@ struct EqExp: AstNode{
     string v;
     Type t = Type::Int;
 
-    /**
-     * @brief constructor
-     */
+    
     EqExp(AstNode* p = nullptr);
 };
 
@@ -371,9 +311,7 @@ struct LAndExp: AstNode{
     string v;
     Type t = Type::Int;
 
-    /**
-     * @brief constructor
-     */
+    
     LAndExp(AstNode* p = nullptr);
 };
 
@@ -382,9 +320,7 @@ struct LOrExp: AstNode{
     string v;
     Type t = Type::Int;
 
-    /**
-     * @brief constructor
-     */
+    
     LOrExp(AstNode* p = nullptr);
 };
 
@@ -393,9 +329,7 @@ struct ConstExp: AstNode{
     string v;
     Type t ;
 
-    /**
-     * @brief constructor
-     */
+    
     ConstExp(AstNode* p = nullptr);
 };
     

@@ -25,8 +25,7 @@ using std::map;
 using std::string;
 using std::vector;
 
-namespace frontend
-{
+namespace frontend{
 
 // definition of symbol table entry
 struct STE {
@@ -52,6 +51,8 @@ map<std::string,ir::Function*>* get_lib_funcs();
 // definition of symbol table
 // 符号表的数据结构，由于需要支持嵌套作用域，所以我们需要一个栈来存储作用域的信息
 struct SymbolTable{
+    // 用于标识当前作用域的编号
+    int cnt = 0;
     vector<ScopeInfo> scope_stack;
     // 用来存储函数的信息，key 是函数的名字，value 是函数的 IR 表示
     map<std::string,ir::Function*> functions;
@@ -113,7 +114,7 @@ struct Analyzer {
     /**
      * @brief constructor
      */
-    Analyzer();
+    Analyzer(); 
 
     // analysis functions
     // 语义分析的入口
@@ -129,13 +130,42 @@ struct Analyzer {
     Analyzer& operator=(const Analyzer&) = delete;
 
     // 各节点的语义分析函数
+    /* Program */
     void analysisCompUnit(CompUnit*, ir::Program&);
+    /* Function */
     void analysisFuncDef(FuncDef*, ir::Function&);
     void analysisDecl(Decl*, vector<ir::Instruction*>&);
     void analysisConstDecl(ConstDecl*, vector<ir::Instruction*>&);
     void analysisBType(BType*, vector<ir::Instruction*>&);
     void analysisConstDef(ConstDef*, vector<ir::Instruction*>&);
     void analysisConstInitVal(ConstInitVal*, vector<ir::Instruction*>&);
+    void analysisVarDecl(VarDecl*, vector<ir::Instruction*>&);
+    void analysisVarDef(VarDef*, vector<ir::Instruction*>&);
+    void analysisInitVal(InitVal*, vector<ir::Instruction*>&);
+    void analysisFuncType(FuncType*, vector<ir::Instruction*>&);
+    /* Function */
+    void analysisFuncFParam(FuncFParam*, ir::Function&);
+    /* Function */
+    void analysisFuncFParams(FuncFParams*, ir::Function&);
+    void analysisBlock(Block*, vector<ir::Instruction*>&);
+    void analysisBlockItem(BlockItem*, vector<ir::Instruction*>&);
+    void analysisStmt(Stmt*, vector<ir::Instruction*>&);
+    void analysisExp(Exp*, vector<ir::Instruction*>&);
+    void analysisCond(Cond*, vector<ir::Instruction*>&);
+    void analysisLVal(LVal*, vector<ir::Instruction*>&);
+    void analysisNumber(Number*, vector<ir::Instruction*>&);
+    void analysisPrimaryExp(PrimaryExp*, vector<ir::Instruction*>&);
+    void analysisUnaryExp(UnaryExp*, vector<ir::Instruction*>&);
+    void analysisUnaryOp(UnaryOp*, vector<ir::Instruction*>&);
+    void analysisFuncRParams(FuncRParams*, vector<ir::Instruction*>&);
+    void analysisMulExp(MulExp*, vector<ir::Instruction*>&);
+    void analysisAddExp(AddExp*, vector<ir::Instruction*>&);
+    void analysisRelExp(RelExp*, vector<ir::Instruction*>&);
+    void analysisEqExp(EqExp*, vector<ir::Instruction*>&);
+    void analysisLAndExp(LAndExp*, vector<ir::Instruction*>&);
+    void analysisLOrExp(LOrExp*, vector<ir::Instruction*>&);
+    void analysisConstExp(ConstExp*, vector<ir::Instruction*>&);
+
 };
 
 } // namespace frontend
