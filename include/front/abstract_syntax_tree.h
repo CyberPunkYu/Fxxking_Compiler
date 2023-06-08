@@ -133,7 +133,7 @@ struct BType: AstNode {
 
 struct ConstDef: AstNode{
     std::string arr_name;
-
+    Type t;
     
     ConstDef(AstNode* p = nullptr);
 };
@@ -170,7 +170,7 @@ struct InitVal: AstNode{
 };
 
 struct FuncType: AstNode{
-    
+    Type t;
     FuncType(AstNode* p = nullptr);
 };
 

@@ -118,12 +118,10 @@ struct Analyzer {
 
     Cond* last_cond; // 最终的条件
     vector<Stmt*> last_while;
-    vector<int> tmp_stack;
 
     // 向符号表中添加变量
     void insert_ste(std::string name, STE ste);
-    
-    std::string get_tmp_var();
+
     // analysis functions
     // 语义分析的入口
     /**
