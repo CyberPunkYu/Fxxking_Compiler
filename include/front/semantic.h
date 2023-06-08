@@ -116,9 +116,6 @@ struct Analyzer {
     ir::Program program; // 语义分析的结果，程序体
     ir::Function* curr_function; // 指向当前作用的函数体
 
-    Cond* last_cond; // 最终的条件
-    vector<Stmt*> last_while;
-
     // 向符号表中添加变量
     void insert_ste(std::string name, STE ste);
 

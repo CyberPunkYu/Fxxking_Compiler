@@ -591,10 +591,17 @@ void frontend::Analyzer::analyseStmt(Stmt* root){
         if(((Term*) child)->token.type == TokenType::IFTK){
             // 分析Cond
             ANALYSIS(cond, Cond, 2);
+            // 添加跳转指令，方便短路运算
+            Operand des = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
+            INST_INSERT(Operand(), Operand(), des, Operator::_goto);
             // 分析Stmt
             ANALYSIS(stmt, Stmt, 4);
-            // 分析else
+            // 如果有else
             if(root->children.size() == 7){
+                // 添加跳转指令
+                Operand des2 = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
+                INST_INSERT(Operand(), Operand(), des2, Operator::_goto);
+                // 分析Stmt
                 ANALYSIS(stmt, Stmt, 6);
             }
         }
@@ -608,35 +615,62 @@ void frontend::Analyzer::analyseStmt(Stmt* root){
         // 'break' ';'
         else if(((Term*) child)->token.type == TokenType::BREAKTK){
             // 添加指令
-            INST_INSERT(Operand(), Operand(), Operand(), Operator::_break);
+            Operand des = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
+            INST_INSERT(Operand(), Operand(), des, Operator::_goto);
         }
         // 'continue' ';'
         else if(((Term*) child)->token.type == TokenType::CONTINUETK){
             // 添加指令
-            INST_INSERT(Operand(), Operand(), Operand(), Operator::_continue);
+            Operand des = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
+            INST_INSERT(Operand(), Operand(), des, Operator::_goto);
         }
         // 'return' [Exp] ';'
-        else if(child->token.type == TokenType::RETURNTK){
+        else if(((Term*) child)->token.type == TokenType::RETURNTK){
             // 分析Exp
+            // Exp -> AddExp
             if(root->children.size() == 3){
                 ANALYSIS(exp, Exp, 1);
-                // 添加指令
-                Operand op1 = Operand(exp->v, exp->t);
-                Operand des = Operand("return", Type::IntLiteral);
-                INST_INSERT(op1, Operand(), des, Operator::_return);
+                // 添加指令/仅考虑整型
+                INST_INSERT(Operand(exp->v, Type::Int), Operand(), Operand(), Operator::_return);
             }
             else{
-                // 添加指令
+                // 添加指令/直接返回
                 INST_INSERT(Operand(), Operand(), Operand(), Operator::_return);
             }
         }
         // ';'
         else{
-            // 添加指令
-            INST_INSERT(Operand(), Operand(), Operand(), Operator::nop);
+            // do nothing
         }
     }
-    else{
-
-    }
 }
+
+// Exp -> AddExp
+// Exp.is_computable
+// Exp.v
+// Exp.t
+void frontend::Analyzer::analyseExp(Exp* root){
+    // 分析AddExp
+    ANALYSIS(addexp, AddExp, 0);
+    // 向上传值
+    COPY_EXP_NODE(addexp, root);
+}
+
+// Cond -> LOrExp
+// Cond.is_computable
+// Cond.v
+// Cond.t
+void frontend::Analyzer::analyseCond(Cond* root){
+    // 分析LOrExp
+    ANALYSIS(lorexp, LOrExp, 0);
+    // 向上传值
+    COPY_EXP_NODE(lorexp, root);
+}
+
+// UnaryOp -> '+' | '-' | '!'
+// UnaryOp.op
+void frontend::Analyzer::analyseUnaryOp(UnaryOp* root){
+    // 传递值
+    root->op = ((Term*)root->children[0])->token.type;
+}
+
