@@ -21,6 +21,7 @@
 #include<map>
 #include<string>
 #include<vector>
+
 using std::map;
 using std::string;
 using std::vector;
@@ -110,12 +111,19 @@ struct Analyzer {
     int tmp_cnt;    // 临时变量的计数器
     vector<ir::Instruction*> g_init_inst;   // 全局变量初始化的指令
     SymbolTable symbol_table;   // 符号表
-
-    /**
-     * @brief constructor
-     */
     Analyzer(); 
 
+    ir::Program program; // 语义分析的结果，程序体
+    ir::Function* curr_function; // 指向当前作用的函数体
+
+    Cond* last_cond; // 最终的条件
+    vector<Stmt*> last_while;
+    vector<int> tmp_stack;
+
+    // 向符号表中添加变量
+    void insert_ste(std::string name, STE ste);
+    
+    std::string get_tmp_var();
     // analysis functions
     // 语义分析的入口
     /**
@@ -130,42 +138,37 @@ struct Analyzer {
     Analyzer& operator=(const Analyzer&) = delete;
 
     // 各节点的语义分析函数
-    /* Program */
-    void analysisCompUnit(CompUnit*, ir::Program&);
-    /* Function */
-    void analysisFuncDef(FuncDef*, ir::Function&);
-    void analysisDecl(Decl*, vector<ir::Instruction*>&);
-    void analysisConstDecl(ConstDecl*, vector<ir::Instruction*>&);
-    void analysisBType(BType*, vector<ir::Instruction*>&);
-    void analysisConstDef(ConstDef*, vector<ir::Instruction*>&);
-    void analysisConstInitVal(ConstInitVal*, vector<ir::Instruction*>&);
-    void analysisVarDecl(VarDecl*, vector<ir::Instruction*>&);
-    void analysisVarDef(VarDef*, vector<ir::Instruction*>&);
-    void analysisInitVal(InitVal*, vector<ir::Instruction*>&);
-    void analysisFuncType(FuncType*, vector<ir::Instruction*>&);
-    /* Function */
-    void analysisFuncFParam(FuncFParam*, ir::Function&);
-    /* Function */
-    void analysisFuncFParams(FuncFParams*, ir::Function&);
-    void analysisBlock(Block*, vector<ir::Instruction*>&);
-    void analysisBlockItem(BlockItem*, vector<ir::Instruction*>&);
-    void analysisStmt(Stmt*, vector<ir::Instruction*>&);
-    void analysisExp(Exp*, vector<ir::Instruction*>&);
-    void analysisCond(Cond*, vector<ir::Instruction*>&);
-    void analysisLVal(LVal*, vector<ir::Instruction*>&);
-    void analysisNumber(Number*, vector<ir::Instruction*>&);
-    void analysisPrimaryExp(PrimaryExp*, vector<ir::Instruction*>&);
-    void analysisUnaryExp(UnaryExp*, vector<ir::Instruction*>&);
-    void analysisUnaryOp(UnaryOp*, vector<ir::Instruction*>&);
-    void analysisFuncRParams(FuncRParams*, vector<ir::Instruction*>&);
-    void analysisMulExp(MulExp*, vector<ir::Instruction*>&);
-    void analysisAddExp(AddExp*, vector<ir::Instruction*>&);
-    void analysisRelExp(RelExp*, vector<ir::Instruction*>&);
-    void analysisEqExp(EqExp*, vector<ir::Instruction*>&);
-    void analysisLAndExp(LAndExp*, vector<ir::Instruction*>&);
-    void analysisLOrExp(LOrExp*, vector<ir::Instruction*>&);
-    void analysisConstExp(ConstExp*, vector<ir::Instruction*>&);
-
+    void analyseCompUnit(CompUnit*);
+    void analyseDecl(Decl*);
+    void analyseConstDecl(ConstDecl*);
+    void analyseBType(BType*);
+    void analyseConstDef(ConstDef*);
+    void analyseConstInitVal(int &, STE&, int, int, ConstInitVal*);
+    void analyseVarDecl(VarDecl*);
+    void analyseVarDef(VarDef*);
+    void analyseInitVal(int&, STE&, int, int, InitVal*);
+    void analyseFuncDef(FuncDef*);
+    void analyseFuncType(FuncType*);
+    void analyseFuncFParam(FuncFParam*);
+    void analyseFuncFParams(FuncFParams*);
+    void analyseBlock(Block*);
+    void analyseBlockItem(BlockItem*);
+    void analyseStmt(Stmt*);
+    void analyseExp(Exp*);
+    void analyseCond(Cond*);
+    void analyseLVal(LVal*, int);
+    void analyseNumber(Number*);
+    void analysePrimaryExp(PrimaryExp*);
+    void analyseUnaryExp(UnaryExp*);
+    void analyseUnaryOp(UnaryOp*);
+    void analyseFuncRParams(std::vector<ir::Operand>&, FuncRParams*);
+    void analyseMulExp(MulExp*);
+    void analyseAddExp(AddExp*);
+    void analyseRelExp(RelExp*);
+    void analyseEqExp(EqExp*);
+    void analyseLAndExp(LAndExp*);
+    void analyseLOrExp(LOrExp*);
+    void analyseConstExp(ConstExp*);
 };
 
 } // namespace frontend
