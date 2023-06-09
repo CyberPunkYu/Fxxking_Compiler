@@ -32,6 +32,8 @@ namespace frontend{
 struct STE {
     ir::Operand operand;    // 记录了符号的名字和类型
     vector<int> dimension;  // 对于数组来说，我们不止需要知道名字和类型，在语义分析的过程中还需要知道维度
+    int len = 1;            // 数组的长度，默认为1
+    int level = 0;          // 数组维度指针，用于记录当前处理到第几维
 };
 
 // 存储符号表的数据结构，key是符号的名字，value是STE
@@ -138,7 +140,7 @@ struct Analyzer {
     void analyseConstDecl(ConstDecl*);
     void analyseBType(BType*);
     void analyseConstDef(ConstDef*);
-    void analyseConstInitVal(int &, STE&, int, int, ConstInitVal*);
+    void analyseConstInitVal(int &, STE&, ConstInitVal*);
     void analyseVarDecl(VarDecl*);
     void analyseVarDef(VarDef*);
     void analyseInitVal(int&, STE&, int, int, InitVal*);

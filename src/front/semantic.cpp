@@ -12,7 +12,7 @@ using ir::Operator;
 #define TODO assert(0 && "TODO");
 
 // 返回根节点的某个孩子节点
-#define GET_CHILD(type, index) dynamic_cast<type *>(root->children[index]);
+#define GET_CHILD(type, index) dynamic_cast<type *>(root->children[index])
 // 将根节点的孩子递归分析
 #define ANALYSIS(node, type, index) auto node = dynamic_cast<type *>(root->children[index]); \
                                     assert(node);                                            \
@@ -25,12 +25,12 @@ using ir::Operator;
 // 生成临时变量名称
 #define GET_TMP_NAME ("t" + std::to_string(tmp_cnt++))
 // 赋值语句，将整型字面量赋值给一个整型的临时变量
-#define ASSIGN_INT_TO_TMP(op) Operand des(GET_TMP_NAME, Type::Int); \
-                              INST_INSERT(op, Operand(), des, Operator::mov); \
-                            //   return des;
+#define ASSIGN_INT_TO_TMP(op, opname, instname) Operand opname(GET_TMP_NAME, Type::Int); \
+                                                Instruction* instname = new Instruction(op, Operand(), des, Operator::mov); \
+                                                curr_function->addInst(instname);
 // 指令插入
-#define INST_INSERT(op1, op2, des, op) auto inst = new Instruction(op1, op2, des, op); \
-                                       curr_function->addInst(inst);
+#define INST_INSERT(op1, op2, des, op, name) auto name = new Instruction(op1, op2, des, op); \
+                                             curr_function->addInst(name);
 // 静态成员初始化
 map<std::string,ir::Function*>* frontend::get_lib_funcs() {
     static map<std::string,ir::Function*> lib_funcs = {
@@ -69,11 +69,10 @@ void frontend::SymbolTable::exit_scope() {
 string frontend::SymbolTable::get_scoped_name(string id) const {
     // 从栈顶往下遍历，如果找到该id的变量，就返回该变量的id+scope_name
     for(int i = (int) scope_stack.size() - 1; i >= 0; i--){
-        if(scope_stack[i].table.count(id)){
+        if(scope_stack[i].table.find(id) != scope_stack[i].table.end()){
             return id + "_" + scope_stack[i].name;
         }
     }
-    // 如果都没找到，则是首次声明，直接返回原来的id
     return id;
 }
 
@@ -109,7 +108,7 @@ frontend::Analyzer::Analyzer(): tmp_cnt(0), symbol_table(),curr_function(nullptr
     // 添加全局作用域
     ScopeInfo scope_info;
     scope_info.name = "global";
-    scope_info.cnt  = 0;
+    scope_info.cnt  = symbol_table.cnt;
     symbol_table.scope_stack.push_back(scope_info);
 }
 
@@ -119,16 +118,13 @@ void frontend::Analyzer::insert_ste(std::string name, STE ste) {
     // 如果是全局变量，还要加入到program中
     if(curr_function == nullptr) {
         ste.operand.name = ste.operand.name + "_global";
-        if(ste.operand.type == Type::FloatPtr || ste.operand.type == Type::IntPtr) {
+        if(ste.operand.type == Type::IntPtr) {
             int len = 1;
             // 初始化全局变量的长度，注意并没有二维变量的概念
             for(int i : ste.dimension) { len *= i; }
             program.globalVal.push_back(ir::GlobalVal(ste.operand, len));
         } 
-        else if(ste.operand.type == Type::Float || ste.operand.type == Type::Int) {
-            program.globalVal.push_back(ir::GlobalVal(ste.operand));
-        } 
-        else {}
+        else{ program.globalVal.push_back(ir::GlobalVal(ste.operand)); } 
     }
 }
 
@@ -173,8 +169,8 @@ void frontend::Analyzer::analyseConstDecl(ConstDecl* root){
     // 分析ConstDef
     for(int i = 2; i < (int) root->children.size() - 1; i += 2){
         // 将该变量的类型设置为声明的类型
-        auto constdef = root->children[i];
-        ((ConstDef*) constdef)->t = root->t;
+        ConstDef* constdef = GET_CHILD(ConstDef, i);
+        constdef->t = root->t;
         ANALYSIS_WITH_NODE(constdef, ConstDef);
     }
 }
@@ -182,22 +178,24 @@ void frontend::Analyzer::analyseConstDecl(ConstDecl* root){
 // BType -> 'int' | 'float'
 // BType.t **
 void frontend::Analyzer::analyseBType(BType* root){
-    root->t = Type::Int;
+    Term* term = GET_CHILD(Term, 0);
+    // 我们仅考虑int
+    if(term->token.type == TokenType::INTTK){ root->t = Type::Int; }
+
 }
 
 // ConstDef -> Ident { '[' ConstExp ']' } '=' ConstInitVal
 // ConstInitVal -> ConstExp | '{' [ ConstInitVal { ',' ConstInitVal } ] '}'
 // std::string arr_name;
 // Type t;
-// 这里出现了常量的定义，需要将常量的值存入符号表中 **
+// 这里出现了常量的定义，需要将常量的值存入符号表中 debug
 void frontend::Analyzer::analyseConstDef(ConstDef* root){
+    Term* term = GET_CHILD(Term, 0);
     // 一旦出现了中括号，就是数组
-    bool is_array = ((Term*) root->children[1])->token.type == TokenType::LBRACK;
+    bool is_array = (GET_CHILD(Term, 1))->token.type == TokenType::LBRACK;
     // ConstInitVal 出现的位置
     int default_pos = 2;
     int index = 0;
-    // 变量个数
-    int len = 1;
     // 对于数组来说的维度
     vector<int> dimension;
     // 初始化STE
@@ -209,41 +207,40 @@ void frontend::Analyzer::analyseConstDef(ConstDef* root){
             // 分析ConstExp
             ANALYSIS(constexp, ConstExp, default_pos);
             // 如果是ConstExp，那么多出现一维
-            int dim = std::stoi(((ConstExp*) root->children[default_pos])->v);
+            int dim = std::stoi(constexp->v);
             dimension.push_back(dim);
-            len *= dim;
+            ste.len *= dim;
             // 如果多一维，那么ConstInitVal出现的位置需要向后移动3位
             // a = 2(2) --> a[2] = 2(5)
             default_pos += 3;
         }
+        // 初始化STE
         ste.dimension = dimension;
-        // 忽略浮点数组的情况
-        ste.operand = Operand(((Term*) root->children[0])->token.value, Type::IntPtr);
+        ste.operand = Operand(term->token.value, Type::IntPtr);
         insert_ste(ste.operand.name, ste);
-        // 对于数组来说，我们需要分配内存空间
-        Operand op1 = Operand(std::to_string(len), Type::IntLiteral);
+        // 分配内存空间，op1即为数组长度，des即为声明的变量
+        Operand op1 = Operand(std::to_string(ste.len), Type::IntLiteral);
         Operand des = Operand(symbol_table.get_scoped_name(ste.operand.name), Type::IntPtr);
         // 生成指令
-        INST_INSERT(op1, Operand(), des, Operator::alloc);
+        INST_INSERT(op1, {}, des, Operator::alloc, alloc);
         // 分析ConstInitVal
-        analyseConstInitVal(index, ste, len, 0, (ConstInitVal*) root->children[default_pos]);
+        analyseConstInitVal(index, ste, GET_CHILD(ConstInitVal, default_pos));
     }
     else{
-        // 这里我们忽略浮点数的情况
-        ste.operand = Operand(((Term*) root->children[0])->token.value, Type::IntLiteral);
+        ste.operand = Operand(term->token.value, root->t == Type::Int? Type::IntLiteral : Type::FloatLiteral);
         // 先分析ConstInitVal
-        analyseConstInitVal(index, ste, len, 0, (ConstInitVal*) root->children[default_pos]);
+        analyseConstInitVal(index, ste, GET_CHILD(ConstInitVal, default_pos));
         // 将STE插入符号表，此处需要修改
         // insert_ste(ste.operand.name, ste);
-        // insert_ste(((Term*) root->children[0])->token.value, ste);
+        insert_ste(term->token.value, ste);
     }
 }
 
 // ConstInitVal -> ConstExp | '{' [ ConstInitVal { ',' ConstInitVal } ] '}'
 // ConstInitVal.v
 // ConstInitVal.t
-// 由于我们可能会分析数组，所以需要传入当前维度的下表index，以及当前分析的维度level **
-void frontend::Analyzer::analyseConstInitVal(int &index, STE& ste, int len, int level, ConstInitVal* root) {
+// 由于我们可能会分析数组，所以需要传入当前维度的下表index，以及当前分析的维度level debug
+void frontend::Analyzer::analyseConstInitVal(int &index, STE& ste, ConstInitVal* root) {
     // 判断是否是数组
     bool is_array = root->children[0]->type == NodeType::CONSTEXP;
     // ConstExp
@@ -251,11 +248,7 @@ void frontend::Analyzer::analyseConstInitVal(int &index, STE& ste, int len, int 
         // 分析ConstExp
         ANALYSIS(constexp, ConstExp, 0);
         // 如果是int立即数
-        if(ste.operand.type == Type::IntLiteral){
-            // 将值存入符号表
-            ste.operand.name = constexp->v;
-            insert_ste(ste.operand.name, ste);
-        }
+        if(ste.operand.type == Type::IntLiteral){ ste.operand.name = constexp->v; }
         // 如果是数组
         else{
             // 数组名
@@ -265,8 +258,8 @@ void frontend::Analyzer::analyseConstInitVal(int &index, STE& ste, int len, int 
             // 数组值
             Operand op3 = Operand(constexp->v, Type::IntLiteral);
             // 生成指令
-            ASSIGN_INT_TO_TMP(op3);
-            INST_INSERT(op1, op2, des, Operator::store);
+            ASSIGN_INT_TO_TMP(op3, des, mov);
+            INST_INSERT(op1, op2, des, Operator::store, store);
         }
         // 位置向后移动
         index++;
@@ -278,78 +271,79 @@ void frontend::Analyzer::analyseConstInitVal(int &index, STE& ste, int len, int 
         // 分析所有的ConstInitVal
         while(default_pos < (int) root->children.size() - 1){
             // 每分析一维，剩余待分析的数量减少
-            len = len / ste.dimension[level];
+            ste.len /= ste.dimension[ste.level];
+            ste.level++;
             // 分析ConstInitVal
-            analyseConstInitVal(index, ste, len, level + 1, (ConstInitVal*) root->children[default_pos]);
+            analyseConstInitVal(index, ste, (ConstInitVal*) root->children[default_pos]);
             // 位置向后移动
             default_pos += 2;
         }
     }
+    // 使用完len和level后，需要将其还原！！
+    ste.level = 0;
+    for(auto i : ste.dimension){ste.len *= i;}
 }
 
 // VarDecl -> BType VarDef { ',' VarDef } ';'
 // VarDecl.t **
 void frontend::Analyzer::analyseVarDecl(VarDecl* root){
-    // 分析BType
-    ANALYSIS(btype, BType, 0);
-    // 将该变量的类型设置为声明的类型
-    root->t = btype->t;
-    // 分析VarDef
-    for(int i = 1; i < (int) root->children.size() - 1; i += 2){
-        ANALYSIS(vardef, VarDef, i);
-    }
+    // 不需要分析BType，因为我们仅考虑int
+    root->t = Type::Int;
+    for(int i = 1; i < (int) root->children.size() - 1; i += 2){ ANALYSIS(vardef, VarDef, i); }
 }
 
 // VarDef -> Ident { '[' ConstExp ']' } [ '=' InitVal ]
 // VarDef.arr_name
 // 操作和ConstDef类似 **
 void frontend::Analyzer::analyseVarDef(VarDef* root){
-    // 一旦出现了中括号，就是数组
-    bool is_array = ((Term*) root->children[1])->token.type == TokenType::LBRACK;
+    Term* term = GET_CHILD(Term, 0);
+    bool is_array = root->children.size() > 1 && GET_CHILD(Term, 1)->token.type == TokenType::LBRACK;
     int default_pos = 2;
     STE ste;
-    vector<int> dimension;
-    int len = 1;
+    std::vector<int> dimension;
     // 如果是数组
-    if(is_array){
-        while(root->children[default_pos]->type == NodeType::CONSTEXP){
-            ANALYSIS(constexp, ConstExp, default_pos);
-            int dim = std::stoi(constexp->v);
+    if(is_array) {
+        while(default_pos < (int) root->children.size() && root->children[default_pos]->type == NodeType::CONSTEXP) {
+            ANALYSIS(constExp, ConstExp, default_pos);
+            int dim = std::stoi(constExp->v);
             dimension.push_back(dim);
             default_pos += 3;
-            len *= dim;
+            ste.len *= dim;
         }
         // 将数组的维度存入符号表
+        ste.operand = Operand(term->token.value, Type::IntPtr);
         ste.dimension = dimension;
-        ste.operand = Operand(((Term*) root->children[0])->token.value, Type::IntPtr);
         insert_ste(ste.operand.name, ste);
-        // 对于数组来说，我们需要分配内存空间
-        Operand op1 = Operand(std::to_string(len), Type::IntLiteral);
-        Operand des = Operand(symbol_table.get_scoped_name(ste.operand.name), Type::IntPtr);
-        // 生成指令
-        INST_INSERT(op1, Operand(), des, Operator::alloc);
-    }
+        if(curr_function != nullptr) {
+            // 只有局部变量才需要alloc，全局变量不需要alloc
+            Operand op1 = Operand(std::to_string(ste.len), Type::IntLiteral);
+            Operand des = Operand(symbol_table.get_scoped_name(ste.operand.name), ste.operand.type);
+            INST_INSERT(op1, {}, des, Operator::alloc, alloc);
+        }
+    } 
     // 如果不是数组
-    else{
+    else {
         // 将变量的类型设置为int
-        ste.operand = Operand(((Term*) root->children[0])->token.value, Type::IntLiteral);
+        ste.operand = Operand(term->token.value, Type::Int);
         insert_ste(ste.operand.name, ste);
     }
     // 如果有初始化
-    if(default_pos < (int) root->children.size()){
+    if(default_pos < (int) root->children.size()) {
         int index = 0;
-        // 分析InitVal
-        analyseInitVal(index, ste, len, 0, (InitVal*) root->children[default_pos]);
+        analyseInitVal(index, ste, ste.len, ste.level, (InitVal*) root->children[default_pos]);
     }
-    else{
-        // 全局变量的初始化为0
-        if(!is_array && curr_function == nullptr){
-            // 生成指令
-            Operand op1 = Operand(symbol_table.get_scoped_name(ste.operand.name), Type::IntLiteral);
+    else if(curr_function == nullptr) {
+        // 如果是全局变量，需要初始化成全0
+        if(is_array) {
+            // 全局数组不需要初始化
+        } 
+        else {
+            Operand op1 = Operand(symbol_table.get_scoped_name(ste.operand.name), ste.operand.type);
             Operand des = Operand("0", Type::IntLiteral);
-            INST_INSERT(op1, Operand(), des, Operator::def);
+            INST_INSERT(op1, {}, des, Operator::def, def);
         }
     }
+    else{}
 }
 
 // InitVal -> Exp | '{' [ InitVal { ',' InitVal } ] '}'
@@ -358,62 +352,51 @@ void frontend::Analyzer::analyseVarDef(VarDef* root){
 // InitVal.t
 // 和ConstInitVal类似 **
 void frontend::Analyzer::analyseInitVal(int& index, STE& ste, int res, int level, InitVal* root){
-    // 判断是否是数组
     bool is_array = root->children[0]->type == NodeType::EXP;
-    // Exp
-    if(is_array){
-        // 分析Exp
-        ANALYSIS(exp, Exp, 0);
-        // 如果是int立即数
-        if(ste.operand.type == Type::IntLiteral){
-            // 初始化
-            Operand des = Operand(symbol_table.get_scoped_name(ste.operand.name), Type::IntLiteral);
-            Operand op1;
-            // 将值存入符号表
-            ste.operand.name = exp->v;
-            insert_ste(ste.operand.name, ste);
-            // 如果computable为true，说明是int立即数
-            if(exp->is_computable){ op1.type = Type::IntLiteral; }
-            else{ op1.type = Type::Int; }
-            INST_INSERT(op1, Operand(), des, Operator::def);
-        }
-        // 如果是数组
-        else{
-            // 数组名
-            Operand op1 = Operand(symbol_table.get_scoped_name(ste.operand.name), Type::IntPtr);
-            // 数组下标
-            Operand op2 = Operand(std::to_string(index), Type::IntLiteral);
-            // 如果computable为true，说明是int立即数
-            if(exp->is_computable){
-                // 需要注意的是Store存储的类型应该是Int而不是IntLiteral
-                // 数组值
-                Operand op3 = Operand(exp->v, Type::IntLiteral);
-                // 生成指令
-                ASSIGN_INT_TO_TMP(op3);
-                INST_INSERT(op1, op2, des, Operator::store);
-            }
-            else{
-                // 数组值
-                Operand des = Operand(exp->v, Type::Int);
-                // 生成指令
-                INST_INSERT(op1, op2, des, Operator::store);
-            }
-        }
-        // 位置向后移动
-        index++;
-    }
-    // '{' [ InitVal { ',' InitVal } ] '}'
-    else{
-        // 需要分析的InitVal的位置
+    if(!is_array) {
         int default_pos = 1;
-        // 分析所有的InitVal
-        while(default_pos < (int) root->children.size() - 1){
-            // 每分析一维，剩余待分析的数量减少
-            res = res / ste.dimension[level];
-            // 分析InitVal
-            analyseInitVal(index, ste, res, level + 1, (InitVal*) root->children[default_pos]);
-            // 位置向后移动
+        int init_index = index;
+        while(default_pos < (int) root->children.size() && root->children[default_pos]->type == NodeType::INITVAL) {
+            analyseInitVal(index, ste, res / ste.dimension[level], level + 1, (InitVal*) root->children[default_pos]);
             default_pos += 2;
+        }
+        // for(; index < init_index + res; index++) {
+        //     Operand op1 = Operand(symbol_table.get_scoped_name(ste.operand.name), ste.operand.type);
+        //     Operand op2 = Operand(std::to_string(index), Type::IntLiteral);
+        //     Operand op3 = Operand("0", Type::IntLiteral);
+        //     ASSIGN_INT_TO_TMP(op3, des, mov);
+        //     INST_INSERT(op1, op2, des, Operator::store, store);
+        // }
+    } else {
+        // calc constexp val
+        ANALYSIS(exp, Exp, 0);
+        // store
+        // 如果是数组
+        if(ste.operand.type == Type::IntPtr) {
+            Operand op1 = Operand(symbol_table.get_scoped_name(ste.operand.name), ste.operand.type);
+            Operand op2 = Operand(std::to_string(index), Type::IntLiteral);
+            // 如果是常数，需要将常数赋值给临时变量
+            if(exp->is_computable) {
+                Operand op3 = Operand(exp->v, Type::IntLiteral);
+                ASSIGN_INT_TO_TMP(op3, des, mov);
+                INST_INSERT(op1, op2, des, Operator::store, store);
+            }
+            // 如果是变量，直接存储
+            else {
+                Operand des = Operand(exp->v, Type::Int);
+                INST_INSERT(op1, op2, des, Operator::store, store);
+            }
+            index++;
+        }
+        // 不是数组
+        else {
+            // 初始化
+            Operand des = Operand(symbol_table.get_scoped_name(ste.operand.name), ste.operand.type);
+            Operand op1;
+            op1.name = exp->v;
+            if(exp->is_computable) { op1.type = Type::IntLiteral; }
+            else { op1.type = Type::Int; }
+            INST_INSERT(op1, {}, des, Operator::def, def);
         }
     }
 }
@@ -448,7 +431,7 @@ void frontend::Analyzer::analyseFuncDef(FuncDef* root){
         block = GET_CHILD(Block, 5);
     }
     else{
-        block = GET_CHILD(Block, 4)
+        block = GET_CHILD(Block, 4);
     }
     // 声明这个函数之后会进入到一个新的作用域
     symbol_table.add_scope(block);
@@ -459,11 +442,11 @@ void frontend::Analyzer::analyseFuncDef(FuncDef* root){
     // 根据函数的返回值类型，判断应该返回什么值
     if(func_type == ir::Type::null){
         // 无返回值
-        INST_INSERT(Operand(), Operand(), Operand(), Operator::_return);
+        INST_INSERT(Operand(), Operand(), Operand(), Operator::_return, _return);
     }
     else{
         // 有返回值，仅考虑整数
-        INST_INSERT(Operand("int", Type::IntLiteral), Operand(), Operand(), Operator::_return);
+        INST_INSERT(Operand("int", Type::IntLiteral), Operand(), Operand(), Operator::_return, _return);
     }
     // 退出作用域后需更改当前指针, 并向程序体中添加该函数
     curr_function = nullptr;
@@ -475,12 +458,8 @@ void frontend::Analyzer::analyseFuncDef(FuncDef* root){
 void frontend::Analyzer::analyseFuncType(FuncType* root){
     Term* child = GET_CHILD(Term, 0);
     // 判断返回值类型
-    if(child->token.type == TokenType::VOIDTK){
-        root->t = ir::Type::null;
-    }
-    else{
-        root->t = ir::Type::Int;
-    }
+    if(child->token.type == TokenType::VOIDTK){ root->t = ir::Type::null; }
+    else{ root->t = ir::Type::Int; }
 }
 
 // FuncFParam -> BType Ident ['[' ']' { '[' Exp ']' }] **
@@ -489,30 +468,30 @@ void frontend::Analyzer::analyseFuncFParam(FuncFParam* root){
     ANALYSIS(btype, BType, 0);
     // 分析Ident
     Term* ident = GET_CHILD(Term, 1);
-    // ste初始化
-    STE ste;
-    // EXP的位置
-    int default_pos = 5;
     // 判断是否是数组
     bool is_array = root->children.size() > 2;
-    // 如果是数组
-    if(is_array){
+    // EXP的位置
+    int default_pos = 5;
+    // ste初始化
+    STE ste;
+    if(is_array) {
         ste.dimension.push_back(0);
-        // 分析所有的Exp
-        while(default_pos < (int) root->children.size()){
+        while(default_pos < (int) root->children.size()) {
             ANALYSIS(exp, Exp, default_pos);
-            // 如果是int立即数
-            if(exp->is_computable){
-                // 将值存入符号表
-                ste.dimension.push_back(std::stoi(exp->v));
-                default_pos += 3;
-            }
+            ste.dimension.push_back(std::stoi(exp->v));
+            default_pos += 3;
         }
+        ste.operand = Operand(ident->token.value, Type::IntPtr);
+        insert_ste(ste.operand.name, ste);
+        Operand op1 = Operand(symbol_table.get_scoped_name(ste.operand.name), ste.operand.type);
+        curr_function->ParameterList.push_back(op1);
     }
-    ste.operand = Operand(ident->token.value, Type::IntPtr);
-    insert_ste(ste.operand.name, ste);
-    // 存入参数列表应该只会看他的类型，名字也不用管会不会重名了
-    curr_function->ParameterList.push_back(ste.operand);
+    else{
+        ste.operand = Operand(ident->token.value, is_array ? Type::IntPtr : btype->t);
+        insert_ste(ste.operand.name, ste);
+        Operand op1 = Operand(symbol_table.get_scoped_name(ste.operand.name), ste.operand.type);
+        curr_function->ParameterList.push_back(op1);
+    }
 }
 
 // FuncFParams -> FuncFParam { ',' FuncFParam } **
@@ -539,14 +518,8 @@ void frontend::Analyzer::analyseBlock(Block* root){
 
 // BlockItem -> Decl | Stmt **
 void frontend::Analyzer::analyseBlockItem(BlockItem* root){
-    // 分析Decl
-    if(((BlockItem*)root)->children[0]->type == NodeType::DECL){
-        ANALYSIS(decl, Decl, 0);
-    }
-    // 分析Stmt
-    else{
-        ANALYSIS(stmt, Stmt, 0);
-    }
+    if(root->children[0]->type == NodeType::DECL) { ANALYSIS(decl, Decl, 0); }
+    else { ANALYSIS(stmt, Stmt, 0); }
 }
 
 // Stmt -> 
@@ -557,7 +530,7 @@ void frontend::Analyzer::analyseBlockItem(BlockItem* root){
 // 'break' ';' |
 // 'continue' ';' |
 // 'return' [Exp] ';' |
-// [Exp] ';'
+// [Exp] ';' **
 void frontend::Analyzer::analyseStmt(Stmt* root){
     // 根据第一个孩子判断即可
     auto child = root->children[0];
@@ -570,7 +543,7 @@ void frontend::Analyzer::analyseStmt(Stmt* root){
         // 添加指令， 没有考虑指针的浮点型情况
         Operand op1 = Operand(exp->v, exp->t);
         Operand des = Operand(symbol_table.get_scoped_name(lval->v), lval->t);
-        INST_INSERT(op1,Operand(), des, Operator::mov);
+        INST_INSERT(op1,Operand(), des, Operator::mov, mov);
     }
     else if(child_type == NodeType::BLOCK){
         Block* block = (Block*) child;
@@ -592,15 +565,15 @@ void frontend::Analyzer::analyseStmt(Stmt* root){
             // 分析Cond
             ANALYSIS(cond, Cond, 2);
             // 添加跳转指令，方便短路运算
-            Operand des = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
-            INST_INSERT(Operand(), Operand(), des, Operator::_goto);
+            // Operand des = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
+            // INST_INSERT(Operand(), Operand(), des, Operator::_goto);
             // 分析Stmt
             ANALYSIS(stmt, Stmt, 4);
             // 如果有else
             if(root->children.size() == 7){
                 // 添加跳转指令
-                Operand des2 = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
-                INST_INSERT(Operand(), Operand(), des2, Operator::_goto);
+                // Operand des2 = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
+                // INST_INSERT(Operand(), Operand(), des2, Operator::_goto);
                 // 分析Stmt
                 ANALYSIS(stmt, Stmt, 6);
             }
@@ -616,13 +589,13 @@ void frontend::Analyzer::analyseStmt(Stmt* root){
         else if(((Term*) child)->token.type == TokenType::BREAKTK){
             // 添加指令
             Operand des = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
-            INST_INSERT(Operand(), Operand(), des, Operator::_goto);
+            INST_INSERT(Operand(), Operand(), des, Operator::_goto, _goto);
         }
         // 'continue' ';'
         else if(((Term*) child)->token.type == TokenType::CONTINUETK){
             // 添加指令
             Operand des = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
-            INST_INSERT(Operand(), Operand(), des, Operator::_goto);
+            INST_INSERT(Operand(), Operand(), des, Operator::_goto, _goto);
         }
         // 'return' [Exp] ';'
         else if(((Term*) child)->token.type == TokenType::RETURNTK){
@@ -631,11 +604,11 @@ void frontend::Analyzer::analyseStmt(Stmt* root){
             if(root->children.size() == 3){
                 ANALYSIS(exp, Exp, 1);
                 // 添加指令/仅考虑整型
-                INST_INSERT(Operand(exp->v, Type::Int), Operand(), Operand(), Operator::_return);
+                INST_INSERT(Operand(exp->v, Type::Int), Operand(), Operand(), Operator::_return, _return);
             }
             else{
                 // 添加指令/直接返回
-                INST_INSERT(Operand(), Operand(), Operand(), Operator::_return);
+                INST_INSERT(Operand(), Operand(), Operand(), Operator::_return, _return);
             }
         }
         // ';'
@@ -674,3 +647,16 @@ void frontend::Analyzer::analyseUnaryOp(UnaryOp* root){
     root->op = ((Term*)root->children[0])->token.type;
 }
 
+
+// LVal -> Ident {'[' Exp ']'}
+// LVal.is_computable
+// LVal.v
+// LVal.t
+// LVal.i   ???
+void frontend::Analyzer::analyseLVal(LVal* root, int need){
+    Term* term = GET_CHILD(Term, 0);
+    // 向上传值
+    root->v = term->token.value;
+    root->t = Type::Int;
+
+}
