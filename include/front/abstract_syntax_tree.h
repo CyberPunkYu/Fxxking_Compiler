@@ -225,7 +225,7 @@ struct LVal: AstNode{
     bool is_computable = false;
     string v;
     Type t;
-    int i;  // array index, legal if t is IntPtr or FloatPtr
+    std::string i;  // array index, legal if t is IntPtr or FloatPtr
 
     
     LVal(AstNode* p = nullptr);

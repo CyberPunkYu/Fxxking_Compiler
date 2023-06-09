@@ -26,11 +26,15 @@ using ir::Operator;
 #define GET_TMP_NAME ("t" + std::to_string(tmp_cnt++))
 // 赋值语句，将整型字面量赋值给一个整型的临时变量
 #define ASSIGN_INT_TO_TMP(op, opname, instname) Operand opname(GET_TMP_NAME, Type::Int); \
-                                                Instruction* instname = new Instruction(op, Operand(), des, Operator::mov); \
+                                                Instruction* instname = new Instruction(op, {}, des, Operator::mov); \
                                                 curr_function->addInst(instname);
 // 指令插入
 #define INST_INSERT(op1, op2, des, op, name) auto name = new Instruction(op1, op2, des, op); \
                                              curr_function->addInst(name);
+#define INSERT(inst) if(curr_function == nullptr) \
+                     g_init_inst.push_back(inst); \
+                     else \
+                     curr_function->addInst(inst);
 // 静态成员初始化
 map<std::string,ir::Function*>* frontend::get_lib_funcs() {
     static map<std::string,ir::Function*> lib_funcs = {
@@ -84,7 +88,7 @@ Operand frontend::SymbolTable::get_operand(string id) const {
             return scope_stack[i].table.at(id).operand;
         }
     }
-    return Operand();
+    return {};
 }
 
 // 实现与get_operand类似的功能，但是不返回操作数，而是返回STE
@@ -134,7 +138,7 @@ ir::Program frontend::Analyzer::get_ir_program(CompUnit* root) {
     // 添加全局变量初始化指令
     Function* globalFunc = new Function("global", ir::Type::null);
     for(auto i : g_init_inst) globalFunc->addInst(i);
-    globalFunc->addInst(new Instruction(Operand(), Operand(), Operand(), Operator::_return));
+    globalFunc->addInst(new Instruction({}, {}, {}, Operator::_return));
     // 添加全局函数到程序体中
     program.addFunction(*globalFunc);
     program.draw();
@@ -442,11 +446,11 @@ void frontend::Analyzer::analyseFuncDef(FuncDef* root){
     // 根据函数的返回值类型，判断应该返回什么值
     if(func_type == ir::Type::null){
         // 无返回值
-        INST_INSERT(Operand(), Operand(), Operand(), Operator::_return, _return);
+        INST_INSERT({}, {}, {}, Operator::_return, _return);
     }
     else{
         // 有返回值，仅考虑整数
-        INST_INSERT(Operand("int", Type::IntLiteral), Operand(), Operand(), Operator::_return, _return);
+        INST_INSERT(Operand("int", Type::IntLiteral), {}, {}, Operator::_return, _return);
     }
     // 退出作用域后需更改当前指针, 并向程序体中添加该函数
     curr_function = nullptr;
@@ -540,10 +544,18 @@ void frontend::Analyzer::analyseStmt(Stmt* root){
         LVal* lval = (LVal*) child;
         analyseLVal(lval, 0);
         ANALYSIS(exp, Exp, 2);
-        // 添加指令， 没有考虑指针的浮点型情况
-        Operand op1 = Operand(exp->v, exp->t);
-        Operand des = Operand(symbol_table.get_scoped_name(lval->v), lval->t);
-        INST_INSERT(op1,Operand(), des, Operator::mov, mov);
+        // 如果左值为数组
+        if(lval->i != ""){
+            Operand op1 = Operand(symbol_table.get_scoped_name(lval->v), Type::IntPtr);
+            Operand op2 = Operand(lval->i, Type::Int);
+            Operand des = Operand(exp->v, exp->t);
+            INST_INSERT(op1, op2, des, Operator::store, store);
+        }
+        else{
+            Operand op1 = Operand(exp->v, exp->t);
+            Operand des = Operand(symbol_table.get_scoped_name(lval->v), lval->t);
+            INST_INSERT(op1, {}, des, Operator::mov, mov);
+        }
     }
     else if(child_type == NodeType::BLOCK){
         Block* block = (Block*) child;
@@ -566,14 +578,14 @@ void frontend::Analyzer::analyseStmt(Stmt* root){
             ANALYSIS(cond, Cond, 2);
             // 添加跳转指令，方便短路运算
             // Operand des = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
-            // INST_INSERT(Operand(), Operand(), des, Operator::_goto);
+            // INST_INSERT({}, {}, des, Operator::_goto);
             // 分析Stmt
             ANALYSIS(stmt, Stmt, 4);
             // 如果有else
             if(root->children.size() == 7){
                 // 添加跳转指令
                 // Operand des2 = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
-                // INST_INSERT(Operand(), Operand(), des2, Operator::_goto);
+                // INST_INSERT({}, {}, des2, Operator::_goto);
                 // 分析Stmt
                 ANALYSIS(stmt, Stmt, 6);
             }
@@ -589,13 +601,19 @@ void frontend::Analyzer::analyseStmt(Stmt* root){
         else if(((Term*) child)->token.type == TokenType::BREAKTK){
             // 添加指令
             Operand des = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
-            INST_INSERT(Operand(), Operand(), des, Operator::_goto, _goto);
+            Instruction* goto_inst = new Instruction({}, {}, des, Operator::_goto);
+            INSERT(goto_inst);
+            // 添加当前循环的跳转指令
+            curr_while_stmt.back()->jump_eow.insert(goto_inst);
         }
         // 'continue' ';'
         else if(((Term*) child)->token.type == TokenType::CONTINUETK){
             // 添加指令
             Operand des = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
-            INST_INSERT(Operand(), Operand(), des, Operator::_goto, _goto);
+            Instruction* goto_inst = new Instruction({}, {}, des, Operator::_goto);
+            INSERT(goto_inst);
+            // 添加当前循环的跳转指令
+            curr_while_stmt.back()->jump_bow.insert(goto_inst);
         }
         // 'return' [Exp] ';'
         else if(((Term*) child)->token.type == TokenType::RETURNTK){
@@ -603,12 +621,16 @@ void frontend::Analyzer::analyseStmt(Stmt* root){
             // Exp -> AddExp
             if(root->children.size() == 3){
                 ANALYSIS(exp, Exp, 1);
-                // 添加指令/仅考虑整型
-                INST_INSERT(Operand(exp->v, Type::Int), Operand(), Operand(), Operator::_return, _return);
+                if(exp->t == Type::IntLiteral){
+                    INST_INSERT(Operand(exp->v, exp->t), {}, {}, Operator::_return, _return);
+                }
+                else{
+                    INST_INSERT(Operand(exp->v, Type::Int), {}, {}, Operator::_return, _return);
+                }
             }
             else{
                 // 添加指令/直接返回
-                INST_INSERT(Operand(), Operand(), Operand(), Operator::_return, _return);
+                INST_INSERT({}, {}, {}, Operator::_return, _return);
             }
         }
         // ';'
