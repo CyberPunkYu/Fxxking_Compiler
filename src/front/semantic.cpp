@@ -28,10 +28,14 @@ using ir::CallInst;
 // 赋值语句，将整型字面量赋值给一个整型的临时变量
 #define ASSIGN_INT_TO_TMP(op, opname, instname) Operand opname(GET_TMP_NAME, Type::Int); \
                                                 Instruction* instname = new Instruction(op, {}, opname, Operator::mov); \
-                                                curr_function->addInst(instname);
+                                                INSERT(instname);
 // 指令插入
 #define INST_INSERT(op1, op2, des, op, name) auto name = new Instruction(op1, op2, des, op); \
+                                             if (curr_function == nullptr) \
+                                             g_init_inst.push_back(name); \
+                                             else \
                                              curr_function->addInst(name);
+                                             
 #define INSERT(inst) if(curr_function == nullptr) \
                      g_init_inst.push_back(inst); \
                      else \
@@ -186,7 +190,6 @@ void frontend::Analyzer::analyseBType(BType* root){
     Term* term = GET_CHILD(Term, 0);
     // 我们仅考虑int
     if(term->token.type == TokenType::INTTK){ root->t = Type::Int; }
-
 }
 
 // ConstDef -> Ident { '[' ConstExp ']' } '=' ConstInitVal
@@ -365,13 +368,13 @@ void frontend::Analyzer::analyseInitVal(int& index, STE& ste, int res, int level
             analyseInitVal(index, ste, res / ste.dimension[level], level + 1, (InitVal*) root->children[default_pos]);
             default_pos += 2;
         }
-        // for(; index < init_index + res; index++) {
-        //     Operand op1 = Operand(symbol_table.get_scoped_name(ste.operand.name), ste.operand.type);
-        //     Operand op2 = Operand(std::to_string(index), Type::IntLiteral);
-        //     Operand op3 = Operand("0", Type::IntLiteral);
-        //     ASSIGN_INT_TO_TMP(op3, des, mov);
-        //     INST_INSERT(op1, op2, des, Operator::store, store);
-        // }
+        for(; index < init_index + res; index++) {
+            Operand op1 = Operand(symbol_table.get_scoped_name(ste.operand.name), ste.operand.type);
+            Operand op2 = Operand(std::to_string(index), Type::IntLiteral);
+            Operand op3 = Operand("0", Type::IntLiteral);
+            ASSIGN_INT_TO_TMP(op3, des, mov);
+            INST_INSERT(op1, op2, des, Operator::store, store);
+        }
     } else {
         // calc constexp val
         ANALYSIS(exp, Exp, 0);
@@ -910,20 +913,19 @@ void frontend::Analyzer::analyseConstExp(ConstExp* root) {
 // MulExp.is_computable
 // MulExp.v
 // MulExp.t
-void frontend::Analyzer::analyseMulExp(MulExp* root){
+void frontend::Analyzer::analyseMulExp(MulExp* root) {
     if(root->children.size() == 1) { // 只有一个儿子 直接继承
         ANALYSIS(unaryexp, UnaryExp, 0);
         COPY_EXP_NODE(unaryexp, root);
     }
     else{
-        // 分析所有的UnaryExp
-        for(int i = 0; i < (int) root->children.size(); i += 2){
+        root->is_computable = true;
+        for(int i = 0; i < (int) root->children.size(); i += 2) {
             ANALYSIS(unaryexp,UnaryExp, i);
             // 如果有一个不可计算，那么整个表达式都不可计算
             if(!unaryexp->is_computable) { root->is_computable = false; }
         }
-        // 如果所有的都可计算，那么计算结果
-        if(root->is_computable){
+        if(root->is_computable) {
             int res = std::stoi(GET_CHILD(UnaryExp, 0)->v);
             for(int i = 2; i < (int) root->children.size(); i += 2){
                 int tmp = std::stoi(GET_CHILD(UnaryExp, i)->v);
@@ -935,9 +937,7 @@ void frontend::Analyzer::analyseMulExp(MulExp* root){
             }
             root->v = std::to_string(res);
             root->t = Type::IntLiteral;
-        }
-        // 如果是变量，并将结果存入临时变量
-        else{
+        } else {
             // 生成指令
             // 临时变量存储最终结果
             Operand op1 = Operand(GET_CHILD(UnaryExp, 0)->v, GET_CHILD(UnaryExp, 0)->t);
@@ -955,6 +955,7 @@ void frontend::Analyzer::analyseMulExp(MulExp* root){
                 if(unaryexp->is_computable) {
                     Operand op2 = Operand(GET_TMP_NAME, Type::Int);
                     curr_function->addInst(new Instruction(op3, {}, op2, Operator::mov));
+                    // ASSIGN_INT_TO_TMP(op3, op2, mov)
                     INST_INSERT(res, op2, res, op, oper);
                 } else {
                     INST_INSERT(res, op3, res, op, oper);
@@ -964,6 +965,7 @@ void frontend::Analyzer::analyseMulExp(MulExp* root){
             root->v = res.name;
         }
     }
+     
 }
 
 // AddExp -> MulExp { ('+' | '-') MulExp }
@@ -977,6 +979,7 @@ void frontend::Analyzer::analyseAddExp(AddExp* root){
     }
     else{
         // 分析所有的MulExp
+        root->is_computable = true;
         for(int i = 0; i < (int) root->children.size(); i += 2){
             ANALYSIS(mulexp, MulExp, i);
             // 如果有一个不可计算，那么整个表达式都不可计算
