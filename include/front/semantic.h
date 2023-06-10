@@ -116,10 +116,10 @@ struct Analyzer {
     Analyzer(); 
 
     ir::Program program; // 语义分析的结果，程序体
-    
-    ir::Function* curr_function; // 指向当前作用的函数体
-    Cond* curr_cond;    // 指向当前的条件表达式
-    vector<Stmt*> curr_while_stmt;  // 指向当前的 while 循环体
+    public:
+        ir::Function* curr_function; // 指向当前作用的函数体
+        Cond* curr_cond;    // 指向当前的条件表达式
+        vector<Stmt*> curr_while_stmt;  // 指向当前的 while 循环体
     // 向符号表中添加变量
     void insert_ste(std::string name, STE ste);
 
@@ -155,12 +155,12 @@ struct Analyzer {
     void analyseStmt(Stmt*);
     void analyseExp(Exp*);
     void analyseCond(Cond*);
-    void analyseLVal(LVal*, int);
+    void analyseLVal(LVal*);
     void analyseNumber(Number*);
     void analysePrimaryExp(PrimaryExp*);
     void analyseUnaryExp(UnaryExp*);
     void analyseUnaryOp(UnaryOp*);
-    void analyseFuncRParams(std::vector<ir::Operand>&, FuncRParams*);
+    std::vector<ir::Operand> analyseFuncRParams(FuncRParams*);
     void analyseMulExp(MulExp*);
     void analyseAddExp(AddExp*);
     void analyseRelExp(RelExp*);

@@ -41,7 +41,7 @@ def run_compiler(arg1):
             for src in src_files:
                 fname, ftype = src.split('.')
                 cmd = ' '.join([compiler_path, testcase_dir + src, step, "-o", output_dir + fname + "." + oftype])
-                print(cmd)
+                # print(cmd)
                 if is_windows:
                     cmd = cmd.replace('/','\\')
                 cp = subprocess.run(cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL)

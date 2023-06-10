@@ -8,6 +8,7 @@ using ir::Instruction;
 using ir::Function;
 using ir::Operand;
 using ir::Operator;
+using ir::CallInst;
 
 #define TODO assert(0 && "TODO");
 
@@ -26,7 +27,7 @@ using ir::Operator;
 #define GET_TMP_NAME ("t" + std::to_string(tmp_cnt++))
 // 赋值语句，将整型字面量赋值给一个整型的临时变量
 #define ASSIGN_INT_TO_TMP(op, opname, instname) Operand opname(GET_TMP_NAME, Type::Int); \
-                                                Instruction* instname = new Instruction(op, {}, des, Operator::mov); \
+                                                Instruction* instname = new Instruction(op, {}, opname, Operator::mov); \
                                                 curr_function->addInst(instname);
 // 指令插入
 #define INST_INSERT(op1, op2, des, op, name) auto name = new Instruction(op1, op2, des, op); \
@@ -534,15 +535,14 @@ void frontend::Analyzer::analyseBlockItem(BlockItem* root){
 // 'break' ';' |
 // 'continue' ';' |
 // 'return' [Exp] ';' |
-// [Exp] ';' **
+// [Exp] ';'
 void frontend::Analyzer::analyseStmt(Stmt* root){
     // 根据第一个孩子判断即可
     auto child = root->children[0];
     auto child_type = child->type;
     // LVal '=' Exp ';'
     if(child_type == NodeType::LVAL){
-        LVal* lval = (LVal*) child;
-        analyseLVal(lval, 0);
+        ANALYSIS(lval, LVal, 0);
         ANALYSIS(exp, Exp, 2);
         // 如果左值为数组
         if(lval->i != ""){
@@ -567,35 +567,69 @@ void frontend::Analyzer::analyseStmt(Stmt* root){
         symbol_table.exit_scope();
     }
     // [EXP];
-    else if(child_type == NodeType::EXP){
-        ANALYSIS(exp, Exp, 0);
-    }
+    else if(child_type == NodeType::EXP){ ANALYSIS(exp, Exp, 0); }
     // 之后全是终结符的情况
     else{
         // 'if' '(' Cond ')' Stmt [ 'else' Stmt ]
         if(((Term*) child)->token.type == TokenType::IFTK){
-            // 分析Cond
-            ANALYSIS(cond, Cond, 2);
-            // 添加跳转指令，方便短路运算
-            // Operand des = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
-            // INST_INSERT({}, {}, des, Operator::_goto);
-            // 分析Stmt
-            ANALYSIS(stmt, Stmt, 4);
-            // 如果有else
-            if(root->children.size() == 7){
-                // 添加跳转指令
-                // Operand des2 = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
-                // INST_INSERT({}, {}, des2, Operator::_goto);
-                // 分析Stmt
-                ANALYSIS(stmt, Stmt, 6);
+            // calc cond
+            Cond* cond = (Cond*) root->children[2];
+            curr_cond = cond;
+            analyseCond(cond);
+            curr_cond = nullptr;
+            Instruction* elseinst = nullptr;
+            Instruction* breakelseinst = nullptr;
+
+            Operand des = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
+            elseinst = new Instruction({}, {}, des, Operator::_goto);
+            INSERT(elseinst);
+            // goto [pc, else]
+
+            // process goto_in
+            for(Instruction *inst : cond->jump_in) {
+                inst->des.name = std::to_string(curr_function->InstVec.size() - std::stoi(inst->des.name));
+            }
+            analyseStmt((Stmt*) root->children[4]);
+            if(root->children.size() >= 6) {
+                // end of if
+                Operand des = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
+                breakelseinst = new Instruction({}, {}, des, Operator::_goto);
+                INSERT(breakelseinst);
+            }
+            elseinst->des.name = std::to_string(curr_function->InstVec.size() - std::stoi(elseinst->des.name));
+            if(root->children.size() >= 6) {
+                analyseStmt((Stmt*) root->children[6]);
+                breakelseinst->des.name = std::to_string(curr_function->InstVec.size() - std::stoi(breakelseinst->des.name));
             }
         }
         // 'while' '(' Cond ')' Stmt
         else if(((Term*) child)->token.type == TokenType::WHILETK){
-            // 分析Cond
-            ANALYSIS(cond, Cond, 2);
-            // 分析Stmt
-            ANALYSIS(stmt, Stmt, 4);
+            curr_while_stmt.push_back(root);
+            Cond* cond = (Cond*) root->children[2];
+            curr_cond = cond;
+            int condpos = curr_function->InstVec.size();
+            analyseCond(cond);
+            curr_cond = nullptr;
+            Instruction* elseinst = nullptr;
+            Operand des = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
+            elseinst = new Instruction({}, {}, des, Operator::_goto);
+            INSERT(elseinst);
+            // goto [pc, else]
+            for(Instruction *inst : cond->jump_in) {
+                inst->des.name = std::to_string(curr_function->InstVec.size() - std::stoi(inst->des.name));
+            }
+            analyseStmt((Stmt*) root->children[4]);
+            Operand des2 = Operand(std::to_string(condpos - (int) curr_function->InstVec.size()), Type::IntLiteral);
+            INST_INSERT({}, {}, des2, Operator::_goto, _goto);
+            elseinst->des.name = std::to_string(curr_function->InstVec.size() - std::stoi(elseinst->des.name));
+            for(Instruction* inst : root->jump_eow) {
+                inst->des.name = std::to_string(curr_function->InstVec.size() - std::stoi(inst->des.name));
+            }
+            for(Instruction* inst : root->jump_bow) {
+                inst->des.name = std::to_string(condpos - std::stoi(inst->des.name));
+            }
+            // end of while
+            curr_while_stmt.pop_back();
         }
         // 'break' ';'
         else if(((Term*) child)->token.type == TokenType::BREAKTK){
@@ -650,7 +684,6 @@ void frontend::Analyzer::analyseExp(Exp* root){
     // 向上传值
     COPY_EXP_NODE(addexp, root);
 }
-
 // Cond -> LOrExp
 // Cond.is_computable
 // Cond.v
@@ -662,23 +695,494 @@ void frontend::Analyzer::analyseCond(Cond* root){
     COPY_EXP_NODE(lorexp, root);
 }
 
-// UnaryOp -> '+' | '-' | '!'
-// UnaryOp.op
-void frontend::Analyzer::analyseUnaryOp(UnaryOp* root){
-    // 传递值
-    root->op = ((Term*)root->children[0])->token.type;
-}
 
 
 // LVal -> Ident {'[' Exp ']'}
 // LVal.is_computable
 // LVal.v
 // LVal.t
-// LVal.i   ???
-void frontend::Analyzer::analyseLVal(LVal* root, int need){
-    Term* term = GET_CHILD(Term, 0);
-    // 向上传值
-    root->v = term->token.value;
+// LVal.i   changed
+void frontend::Analyzer::analyseLVal(LVal* root){
+    // 分析Ident
+    Term* ident = GET_CHILD(Term, 0);
+    // 判断是否为数组
+    bool is_array = root->children.size() > 1;
+    // 由于需要赋值，需要将之前声明的变量拿出来
+    STE ste = symbol_table.get_ste(ident->token.value);
+    root->v = symbol_table.get_scoped_name(ident->token.value);
     root->t = Type::Int;
 
+    if(is_array) { 
+        // 生成临时变量des  
+        ASSIGN_INT_TO_TMP(Operand("0", Type::IntLiteral), des, movToDes);
+        // ident [exp1] [exp2]
+        for(int i = 2; i < (int) root->children.size(); i += 3) {
+            // 生成临时变量tmp，该临时变量的值为当前维度的下标
+            ANALYSIS(exp, Exp, i);
+            ASSIGN_INT_TO_TMP(Operand(exp->v, exp->t), tmp, movToTmp);
+            // des = des * dimension[i / 3] + tmp
+            INST_INSERT(des, tmp, des, Operator::add, add);
+            if(i + 3 < (int) root->children.size()) {
+                INST_INSERT(Operand(std::to_string(ste.dimension[(i + 1) / 3]), Type::IntLiteral), {}, tmp, Operator::mov, mov2);
+                INST_INSERT(des, tmp, des, Operator::mul, mul);
+            }
+        }
+        // 由于Lval可能参与运算，所以需要将其值存放到临时变量中
+        // 根据语法树的结构，如果LVal的父节点为PrimaryExp，就需要加载
+        // 如果LVal的父节点为Stmt，则可能需要为其赋值，所以不需要加载
+        if(root->parent->type == NodeType::PRIMARYEXP){ 
+            if(ste.operand.type == Type::IntPtr) {
+                // load值存放临时位置
+                Operand load_data = Operand(GET_TMP_NAME, Type::Int);
+                // load数组
+                Operand op1 = Operand(symbol_table.get_scoped_name(ident->token.value), Type::IntPtr);
+                // load下标即为des
+                INST_INSERT(op1, des, load_data, Operator::load, load);
+                root->v = load_data.name;
+            }
+        }
+        // LVal的i属性为数组的下标，方便赋值或者取值
+        root->i = des.name;
+    }
+    // 非数组情况
+    else {
+        root->v = ste.operand.name;
+        if(ste.operand.type == Type::IntLiteral) {  root->is_computable = true; root->t = Type::IntLiteral;
+        } else if(ste.operand.type == Type::Int) { root->is_computable = false; root->t = Type::Int;
+        } else if(ste.operand.type == Type::IntPtr) { root->is_computable = false; root->t = Type::IntPtr;
+        }  
+    }
+}
+
+// Number -> IntConst | floatConst
+void frontend::Analyzer::analyseNumber(Number* root){
+    Term* term = GET_CHILD(Term, 0);
+    root->v = term->token.value;
+    root->t = Type::FloatLiteral;
+    // 如果是整数常量
+    if(term->token.type == TokenType::INTLTR){
+        root->t = Type::IntLiteral;
+        int value = 0;
+        if(root->v[0] == '0' && root->v[1] == 'b') { value = std::stoul(root->v, nullptr, 2);
+        } else if(root->v[0] == '0' && root->v[1] == 'x') { value = std::stoul(root->v, nullptr, 16);
+        } else if(root->v[0] == '0' && root->v.length() > 1) { value = std::stoul(root->v, nullptr, 8);
+        } else { value = std::stoul(root->v, nullptr, 10);
+        }
+        root->v = std::to_string(value);
+    }
+}
+
+// PrimaryExp -> '(' Exp ')' | LVal | Number
+// LVal -> Ident {'[' Exp ']'}
+// PrimaryExp.is_computable
+// PrimaryExp.v
+// PrimaryExp.t
+void frontend::Analyzer::analysePrimaryExp(PrimaryExp* root){
+    // 根据第一个子节点的类型进行分析
+    auto child = root->children[0];
+    auto child_type = child->type;
+    // '(' Exp ')'
+    if(child_type == NodeType::TERMINAL){
+        ANALYSIS(exp, Exp, 1);
+        COPY_EXP_NODE(exp, root);
+    }
+    // Lval有以下情况：Int，IntPtr，IntLiteral
+    else if(child_type == NodeType::LVAL){
+        ANALYSIS(lval, LVal, 0);
+        if(lval->t == Type::Int){
+            Operand op1 = Operand(symbol_table.get_scoped_name(lval->v), Type::Int);
+            ASSIGN_INT_TO_TMP(op1, des, movToDes);
+            root->v = des.name;
+            root->t = Type::Int;
+            root->is_computable = false;
+        }
+        else{ COPY_EXP_NODE(lval, root); }
+    }
+    else{
+        ANALYSIS(number, Number, 0);
+        COPY_EXP_NODE(number, root);
+    }
+}
+
+// UnaryExp -> 
+// PrimaryExp | 
+// Ident '(' [FuncRParams] ')' | 
+// UnaryOp UnaryExp
+// UnaryExp.is_computable
+// UnaryExp.v
+// UnaryExp.t
+void frontend::Analyzer::analyseUnaryExp(UnaryExp* root){
+    auto child = root->children[0];
+    auto child_type = child->type;
+    if(child_type == NodeType::PRIMARYEXP){
+        ANALYSIS(primaryExp, PrimaryExp, 0);
+        COPY_EXP_NODE(primaryExp, root);
+    }
+    // 函数调用 Ident '(' [FuncRParams] ')'
+    else if(child_type == NodeType::TERMINAL){
+        // 所调用函数名
+        std::string funcname = GET_CHILD(Term, 0)->token.value;
+        // 从作用域中找到函数
+        // 由于初始化的时候已经将静态函数库放到全局函数中，所以不用单独查询
+        Function* func = symbol_table.functions[funcname];
+        // 无参函数 Ident '(' ')'
+        if(root->children[2]->type == NodeType::TERMINAL){
+            // 生成函数调用指令
+            Operand op1 = Operand(funcname, func->returnType);
+            Operand des = Operand(GET_TMP_NAME, func->returnType);
+            CallInst* call = new CallInst(op1, des);
+            INSERT(call);
+            root->v = des.name;
+        }
+        // 有参函数 Ident '(' FuncRParams ')'
+        else{
+            FuncRParams* funcRParams = GET_CHILD(FuncRParams, 2);
+            std::vector<Operand> paras = analyseFuncRParams(funcRParams);
+            // 生成函数调用指令
+            Operand op1 = Operand(funcname, func->returnType);
+            Operand des = Operand(GET_TMP_NAME, func->returnType);
+            CallInst* call = new CallInst(op1, paras, des);
+            INSERT(call);
+            root->v = des.name;
+        }
+        root->t = func->returnType;
+        root->is_computable = false;
+    }
+    // UnaryOp UnaryExp
+    else{
+        ANALYSIS(unaryop, UnaryOp, 0);
+        ANALYSIS(unaryexp, UnaryExp, 1);
+        COPY_EXP_NODE(unaryexp, root);
+        // 对于常数来说，直接计算结果
+        if(unaryexp->is_computable){
+            if (unaryop->op == TokenType::NOT) {
+                root->v = root->v == "0" ? "1" : "0";
+                root->t = Type::IntLiteral;
+            }
+            else if(unaryop->op == TokenType::MINU){
+                root->v = "-" + root->v;
+            }
+        }
+        // 对于变量来说，生成指令
+        else{
+            if(unaryop->op == TokenType::MINU){
+                // des = 0 - des
+                ASSIGN_INT_TO_TMP(Operand("0", Type::IntLiteral), zero, mov);
+                Operand des = Operand(root->v, root->t);
+                INST_INSERT(zero, des, des, Operator::sub, sub);
+            }
+            else if(unaryop->op == TokenType::NOT){
+                Operand des = Operand(root->v, root->t);
+                INST_INSERT(des, {}, des, Operator::_not, _not);
+            }
+        }
+    }
+}
+
+// UnaryOp -> '+' | '-' | '!'
+void frontend::Analyzer::analyseUnaryOp(UnaryOp* root) {
+    root->op = GET_CHILD(Term, 0)->token.type;
+}
+
+// FuncRParams -> Exp { ',' Exp }
+std::vector<ir::Operand> frontend::Analyzer::analyseFuncRParams(FuncRParams* root){
+    std::vector<ir::Operand> paras;
+    for(int i = 0; i < (int) root->children.size(); i += 2){
+        ANALYSIS(exp, Exp, i);
+        Operand op1 = Operand(symbol_table.get_scoped_name(exp->v), exp->t);
+        paras.push_back(op1);
+    }
+    return paras;
+}
+
+void frontend::Analyzer::analyseLOrExp(LOrExp* root) {
+    ANALYSIS(landexp, LAndExp, 0)
+    if(root->children.size() > 1) { ANALYSIS(lorexp, LOrExp, 2) }
+    else{ COPY_EXP_NODE(landexp, root); }
+}
+
+void frontend::Analyzer::analyseConstExp(ConstExp* root) {
+    ANALYSIS(addexp, AddExp, 0)
+    COPY_EXP_NODE(addexp, root);
+}
+
+// MulExp -> UnaryExp { ('*' | '/' | '%') UnaryExp }
+// MulExp.is_computable
+// MulExp.v
+// MulExp.t
+void frontend::Analyzer::analyseMulExp(MulExp* root){
+    if(root->children.size() == 1) { // 只有一个儿子 直接继承
+        ANALYSIS(unaryexp, UnaryExp, 0);
+        COPY_EXP_NODE(unaryexp, root);
+    }
+    else{
+        // 分析所有的UnaryExp
+        for(int i = 0; i < (int) root->children.size(); i += 2){
+            ANALYSIS(unaryexp,UnaryExp, i);
+            // 如果有一个不可计算，那么整个表达式都不可计算
+            if(!unaryexp->is_computable) { root->is_computable = false; }
+        }
+        // 如果所有的都可计算，那么计算结果
+        if(root->is_computable){
+            int res = std::stoi(GET_CHILD(UnaryExp, 0)->v);
+            for(int i = 2; i < (int) root->children.size(); i += 2){
+                int tmp = std::stoi(GET_CHILD(UnaryExp, i)->v);
+                if(root->children[i - 1]->type == NodeType::TERMINAL){
+                    if(GET_CHILD(Term, i - 1)->token.type == TokenType::MULT) { res *= tmp; }
+                    else if(GET_CHILD(Term, i - 1)->token.type == TokenType::DIV) { res /= tmp; }
+                    else if(GET_CHILD(Term, i - 1)->token.type == TokenType::MOD) { res %= tmp; }
+                }
+            }
+            root->v = std::to_string(res);
+            root->t = Type::IntLiteral;
+        }
+        // 如果是变量，并将结果存入临时变量
+        else{
+            // 生成指令
+            // 临时变量存储最终结果
+            Operand op1 = Operand(GET_CHILD(UnaryExp, 0)->v, GET_CHILD(UnaryExp, 0)->t);
+            ASSIGN_INT_TO_TMP(op1, res, mov);
+            Operator op;
+            for(int i = 2; i < (int) root->children.size(); i += 2) {
+                UnaryExp* unaryexp = GET_CHILD(UnaryExp, i);
+                Term* term = GET_CHILD(Term, i - 1);
+                Operand op3 = Operand(unaryexp->v, unaryexp->t);
+                if(root->children[i - 1]->type == NodeType::TERMINAL){
+                    if(GET_CHILD(Term, i - 1)->token.type == TokenType::MULT) { op = Operator::mul; }
+                    else if(GET_CHILD(Term, i - 1)->token.type == TokenType::DIV) { op = Operator::div; }
+                    else if(GET_CHILD(Term, i - 1)->token.type == TokenType::MOD) { op = Operator::mod; }
+                }
+                if(unaryexp->is_computable) {
+                    Operand op2 = Operand(GET_TMP_NAME, Type::Int);
+                    curr_function->addInst(new Instruction(op3, {}, op2, Operator::mov));
+                    INST_INSERT(res, op2, res, op, oper);
+                } else {
+                    INST_INSERT(res, op3, res, op, oper);
+                }
+            }
+            root->t = Type::Int;
+            root->v = res.name;
+        }
+    }
+}
+
+// AddExp -> MulExp { ('+' | '-') MulExp }
+// AddExp.is_computable
+// AddExp.v
+// AddExp.t
+void frontend::Analyzer::analyseAddExp(AddExp* root){
+    if(root->children.size() == 1) { // 只有一个儿子 直接继承
+        ANALYSIS(mulexp, MulExp, 0);
+        COPY_EXP_NODE(mulexp, root);
+    }
+    else{
+        // 分析所有的MulExp
+        for(int i = 0; i < (int) root->children.size(); i += 2){
+            ANALYSIS(mulexp, MulExp, i);
+            // 如果有一个不可计算，那么整个表达式都不可计算
+            if(!mulexp->is_computable) { root->is_computable = false; }
+        }
+        // 如果所有的都可计算，那么计算结果
+        if(root->is_computable){
+            int res = std::stoi(GET_CHILD(MulExp, 0)->v);
+            for(int i = 2; i < (int) root->children.size(); i += 2){
+                int tmp = std::stoi(GET_CHILD(MulExp, i)->v);
+                if(root->children[i - 1]->type == NodeType::TERMINAL){
+                    if(GET_CHILD(Term, i - 1)->token.type == TokenType::PLUS) { res += tmp; }
+                    else if(GET_CHILD(Term, i - 1)->token.type == TokenType::MINU) { res -= tmp; }
+                }
+            }
+            root->v = std::to_string(res);
+            root->t = Type::IntLiteral;
+        }
+        // 如果是变量，并将结果存入临时变量
+        else{
+            // 生成指令
+            // 临时变量存储最终结果
+            Operand op1 = Operand(GET_CHILD(MulExp, 0)->v, GET_CHILD(MulExp, 0)->t);
+            ASSIGN_INT_TO_TMP(op1, res, mov);
+            Operator op;
+            for(int i = 2; i < (int) root->children.size(); i += 2) {
+                MulExp* mulexp = GET_CHILD(MulExp, i);
+                Term* term = GET_CHILD(Term, i - 1);
+                Operand op3 = Operand(mulexp->v, mulexp->t);
+                if(root->children[i - 1]->type == NodeType::TERMINAL){
+                    if(GET_CHILD(Term, i - 1)->token.type == TokenType::PLUS) { op = Operator::add; }
+                    else if(GET_CHILD(Term, i - 1)->token.type == TokenType::MINU) { op = Operator::sub; }
+                }
+                if(mulexp->is_computable) {
+                    Operand op2 = Operand(GET_TMP_NAME, Type::Int);
+                    curr_function->addInst(new Instruction(op3, {}, op2, Operator::mov));
+                    INST_INSERT(res, op2, res, op, oper);
+                } else {
+                    INST_INSERT(res, op3, res, op, oper);
+                }
+            }
+            root->t = Type::Int;
+            root->v = res.name;
+        }
+    }
+}
+
+
+// RelExp -> AddExp { ('<' | '>' | '<=' | '>=') AddExp }
+// RelExp.is_computable
+// RelExp.v
+// RelExp.t
+void frontend::Analyzer::analyseRelExp(RelExp* root) {
+    if(root->children.size() == 1) { // 只有一个儿子 直接继承
+        ANALYSIS(addexp, AddExp, 0);
+        COPY_EXP_NODE(addexp, root);
+    }
+    else{
+        root->is_computable = true;
+        for(int i = 0; i < (int) root->children.size(); i += 2) {
+            ANALYSIS(addexp, AddExp, i);
+            if(!addexp->is_computable) { root->is_computable = false; }
+        }
+        if(root->is_computable) {
+            int res = std::stoi(GET_CHILD(AddExp, 0)->v);
+            for(int i = 2; i < (int) root->children.size(); i += 2) {
+                int tmp = std::stoi(GET_CHILD(AddExp, i)->v);
+                if(root->children[i - 1]->type == NodeType::TERMINAL){
+                    if(GET_CHILD(Term, i - 1)->token.type == TokenType::LSS) { res = res < tmp; }
+                    else if(GET_CHILD(Term, i - 1)->token.type == TokenType::LEQ) { res = res <= tmp; }
+                    else if(GET_CHILD(Term, i - 1)->token.type == TokenType::GTR) { res = res > tmp; }
+                    else if(GET_CHILD(Term, i - 1)->token.type == TokenType::GEQ) { res = res >= tmp; }
+                }
+            }
+            root->v = std::to_string(res);
+            root->t = Type::IntLiteral;
+        } else {
+            // 生成指令
+            // 临时变量存储最终结果
+            Operand op1 = Operand(GET_CHILD(AddExp, 0)->v, GET_CHILD(AddExp, 0)->t);
+            ASSIGN_INT_TO_TMP(op1, des, mov);
+            Operator op;
+            for(int i = 2; i < (int) root->children.size(); i += 2) {
+                AddExp* addexp = GET_CHILD(AddExp, i);
+                Term* term = GET_CHILD(Term, i - 1);
+                Operand op3 = Operand(addexp->v, addexp->t);  
+                if(root->children[i - 1]->type == NodeType::TERMINAL){
+                    if(GET_CHILD(Term, i - 1)->token.type == TokenType::LSS) { op = Operator::lss; }
+                    else if(GET_CHILD(Term, i - 1)->token.type == TokenType::LEQ) { op = Operator::leq; }
+                    else if(GET_CHILD(Term, i - 1)->token.type == TokenType::GTR) { op = Operator::gtr; }
+                    else if(GET_CHILD(Term, i - 1)->token.type == TokenType::GEQ) { op = Operator::geq; }
+                }
+                if(addexp->is_computable) {
+                    ASSIGN_INT_TO_TMP(op3, op2, mov);
+                    INST_INSERT(des, op2, des, op, oper);
+                } else {
+                    INST_INSERT(des, op3, des, op, oper);
+                }
+            }
+            root->v = des.name;
+            root->t = Type::Int;
+        }
+    }
+}
+
+// EqExp -> RelExp { ('==' | '!=') RelExp }
+// EqExp.is_computable
+// EqExp.v
+// EqExp.t
+void frontend::Analyzer::analyseEqExp(EqExp* root) {
+    if(root->children.size() == 1) { // 只有一个儿子 直接继承
+        ANALYSIS(relexp, RelExp, 0);
+        COPY_EXP_NODE(relexp, root);
+    }
+    else{
+        root->is_computable = true;
+        
+        for(int i = 0; i < (int) root->children.size(); i += 2) {
+            ANALYSIS(relexp, RelExp, i);
+            if(!relexp->is_computable) { root->is_computable = false; }
+        }
+        if(root->is_computable) {
+            int res = std::stoi(((RelExp*) root->children[0])->v);
+            for(int i = 2; i < (int) root->children.size(); i += 2) {
+                int tmp = std::stoi(((RelExp*) root->children[i])->v);
+                if(root->children[i - 1]->type == NodeType::TERMINAL){
+                    if(GET_CHILD(Term, i - 1)->token.type == TokenType::EQL) { res = res == tmp; }
+                    else if(GET_CHILD(Term, i - 1)->token.type == TokenType::NEQ) { res = res != tmp; }
+                }
+            }
+            root->v = std::to_string(res);
+            root->t = Type::IntLiteral;
+        } else {
+            // 生成指令
+            // 临时变量存储最终结果
+            Operand op1 = Operand(((RelExp*) root->children[0])->v, ((RelExp*) root->children[0])->t);
+            ASSIGN_INT_TO_TMP(op1, des, mov);
+            Operator op;
+            for(int i = 2; i < (int) root->children.size(); i += 2) {
+                RelExp* relexp = GET_CHILD(RelExp, i);
+                Term* term = GET_CHILD(Term, i - 1);
+                Operand op3 = Operand(relexp->v, relexp->t);
+                if(root->children[i - 1]->type == NodeType::TERMINAL){
+                    if(GET_CHILD(Term, i - 1)->token.type == TokenType::EQL) { op = Operator::eq; }
+                    else if(GET_CHILD(Term, i - 1)->token.type == TokenType::NEQ) { op = Operator::neq; }
+                }
+                if(relexp->is_computable) {
+                    ASSIGN_INT_TO_TMP(op3, op2, mov);
+                    INST_INSERT(des, op2, des, op, oper);
+                } else {
+                    INST_INSERT(des, op3, des, op, oper);
+                }
+            }
+            root->v = des.name;
+            root->t = Type::Int;
+        }
+    }
+}
+
+// LAndExp -> EqExp [ '&&' LAndExp ]
+// LAndExp.is_computable
+// LAndExp.v 
+// LAndExp.t 
+void frontend::Analyzer::analyseLAndExp(LAndExp* root){
+    ANALYSIS(eqexp, EqExp, 0);
+    if(eqexp->is_computable) {
+        if(!std::stoi(eqexp->v)) {
+            COPY_EXP_NODE(eqexp, root);
+        } else {
+            if(root->children.size() > 1) {
+                ANALYSIS(landexp, LAndExp, 2);
+                COPY_EXP_NODE(landexp, root);
+            } else {
+                Operand des = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
+                Instruction* inst = new Instruction({}, {}, des, Operator::_goto);
+                curr_cond->jump_in.insert(inst);
+                INSERT(inst);
+                COPY_EXP_NODE(eqexp, root);
+            }
+        } 
+    } 
+    else {
+        // 首先判断eqexp是否为0，结果存放在des中
+        Operand des;
+
+        Operand op1 = Operand(eqexp->v, eqexp->t);
+        Operand op2 = Operand("0", Type::IntLiteral);
+        des = Operand(eqexp->v, eqexp->t);
+        INST_INSERT(op1, op2, des, Operator::eq, eq);
+
+        int pos = curr_function->InstVec.size();
+        // 如果eqexp为1，直接跳转到下一个or
+        Instruction *goto_next_or = new Instruction(des, {}, Operand("0", Type::IntLiteral), Operator::_goto);
+        INSERT(goto_next_or);
+        if(root->children.size() > 1) {
+            ANALYSIS(landexp, LAndExp, 2);
+            COPY_EXP_NODE(landexp, root);
+        } else {
+            // the last eqexp goto in of if/while
+            Operand des2 = Operand(std::to_string(curr_function->InstVec.size()), Type::IntLiteral);
+            Instruction *goto_in = new Instruction({}, {}, des2, Operator::_goto);
+            curr_cond->jump_in.insert(goto_in);
+            INSERT(goto_in);
+            COPY_EXP_NODE(eqexp, root);
+        }
+        // 跳到下一个or，也就是现在的位置
+        goto_next_or->des.name = std::to_string(curr_function->InstVec.size() - pos);
+    }
 }
