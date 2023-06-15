@@ -43,58 +43,21 @@ enum class rvREG {
 };
 std::string toString(rvREG r);  // implement this in ur own way
 
-enum class rvFREG {
-    F0,
-    F1,
-    F2,
-    F3,
-    F4,
-    F5,
-    F6,
-    F7,
-    F8,
-    F9,
-    F10,
-    F11,
-    F12,
-    F13,
-    F14,
-    F15,
-    F16,
-    F17,
-    F18,
-    F19,
-    F20,
-    F21,
-    F22,
-    F23,
-    F24,
-    F25,
-    F26,
-    F27,
-    F28,
-    F29,
-    F30,
-    F31,
-};
-std::string toString(rvFREG r);  // implement this in ur own way
-
 // rv32i instructions
 // add instruction u need here!
 enum class rvOPCODE {
     // RV32I Base Integer Instructions
-    ADD, SUB, XOR, OR, AND, SLL, SRL, SRA, SLT, SLTU,       // arithmetic & logic
-    ADDI, XORI, ORI, ANDI, SLLI, SRLI, SRAI, SLTI, SLTIU,   // immediate
+    ADD, SUB, XOR, OR, AND, SLL, SRL, SRA, SLT, SLTU, MUL, DIV, REM,       // arithmetic & logic
+    ADDI, XORI, ORI, ANDI, SLLI, SRLI, SRAI, SLTI, SLTIU, SEQZ, SNEZ, SLTZ, SGTZ,   // immediate
     LW, SW,                                                 // load & store
-    BEQ, BNE, BLT, BGE, BLTU, BGEU,                         // conditional branch
-    JAL, JALR,                                              // jump
-
+    BEQ, BNE, BLT, BGE, BLTU, BGEU, BNEZ,                         // conditional branch
+    JR,                                              // jump
     // RV32M Multiply Extension
 
     // RV32F / D Floating-Point Extensions
 
     // Pseudo Instructions
-    LA, LI, MOV, J,                                         // ...
+    LA, LI, MOV, J, CALL,                                         // ...
 };
 std::string toString(rvOPCODE r);  // implement this in ur own way
 

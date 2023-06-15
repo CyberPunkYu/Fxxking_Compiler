@@ -1,17 +1,3 @@
-/**
- * @file semantic.h
- * @author Yuntao Dai (d1581209858@live.com)
- * @brief 
- * @version 0.1
- * @date 2023-01-06
- * 
- * a Analyzer should 
- * @copyright Copyright (c) 2023
- * 
- */
-
-// 符号表
-
 #ifndef SEMANTIC_H
 #define SEMANTIC_H
 
@@ -26,7 +12,8 @@ using std::map;
 using std::string;
 using std::vector;
 
-namespace frontend{
+namespace frontend
+{
 
 // definition of symbol table entry
 struct STE {
@@ -52,31 +39,25 @@ struct ScopeInfo {
 map<std::string,ir::Function*>* get_lib_funcs();
 
 // definition of symbol table
-// 符号表的数据结构，由于需要支持嵌套作用域，所以我们需要一个栈来存储作用域的信息
 struct SymbolTable{
-    // 用于标识当前作用域的编号
     int cnt = 0;
     vector<ScopeInfo> scope_stack;
-    // 用来存储函数的信息，key 是函数的名字，value 是函数的 IR 表示
     map<std::string,ir::Function*> functions;
 
     /**
      * @brief enter a new scope, record the infomation in scope stacks
-     * @brief 进入新作用域时, 向符号表中添加 ScopeInfo, 相当于压栈
      * @param node: a Block node, entering a new Block means a new name scope
      */
     void add_scope(Block*);
 
     /**
      * @brief exit a scope, pop out infomations
-     * @brief 退出时弹栈
      */
     void exit_scope();
 
     /**
      * @brief Get the scoped name, to deal the same name in different scopes, we change origin id to a new one with scope infomation,
      * for example, we have these code:
-     * @brief 输入一个变量名, 返回其在当前作用域下重命名后的名字 (相当于加后缀)
      * "     
      * int a;
      * {
@@ -91,7 +72,6 @@ struct SymbolTable{
 
     /**
      * @brief get the right operand with the input name
-     * @brief 输入一个变量名, 在符号表中寻找最近的同名变量, 返回对应的 Operand(注意，此 Operand 的 name 是重命名后的)
      * @param id identifier name
      * @return Operand 
      */
@@ -99,7 +79,6 @@ struct SymbolTable{
 
     /**
      * @brief get the right ste with the input name
-     * @brief 输入一个变量名, 在符号表中寻找最近的同名变量, 返回 STE
      * @param id identifier name
      * @return STE 
      */
@@ -108,35 +87,24 @@ struct SymbolTable{
 
 
 // singleton class
-// 语义分析器，本次实验目标
 struct Analyzer {
-    int tmp_cnt;    // 临时变量的计数器
-    vector<ir::Instruction*> g_init_inst;   // 全局变量初始化的指令
-    SymbolTable symbol_table;   // 符号表
-    Analyzer(); 
+    int tmp_cnt;
+    vector<ir::Instruction*> g_init_inst;
+    SymbolTable symbol_table;
+    Analyzer();
 
     ir::Program program; // 语义分析的结果，程序体
     public:
-        ir::Function* curr_function; // 指向当前作用的函数体
+        ir::Function* current_func; // 指向当前作用的函数体
         Cond* curr_cond;    // 指向当前的条件表达式
         vector<Stmt*> curr_while_stmt;  // 指向当前的 while 循环体
-    // 向符号表中添加变量
     void insert_ste(std::string name, STE ste);
+    
 
     // analysis functions
-    // 语义分析的入口
-    /**
-     * @brief Get the ir program object
-     * @param CompUnit* : AST 的根节点
-     * @return ir::Program 
-     */
     ir::Program get_ir_program(CompUnit*);
 
-    // reject copy & assignment
-    Analyzer(const Analyzer&) = delete;
-    Analyzer& operator=(const Analyzer&) = delete;
 
-    // 各节点的语义分析函数
     void analyseCompUnit(CompUnit*);
     void analyseDecl(Decl*);
     void analyseConstDecl(ConstDecl*);
@@ -168,6 +136,10 @@ struct Analyzer {
     void analyseLAndExp(LAndExp*);
     void analyseLOrExp(LOrExp*);
     void analyseConstExp(ConstExp*);
+
+    // reject copy & assignment
+    Analyzer(const Analyzer&) = delete;
+    Analyzer& operator=(const Analyzer&) = delete;
 };
 
 } // namespace frontend

@@ -21,8 +21,8 @@ namespace frontend {
 // enumerate for Token type
 enum class TokenType{
     IDENFR,     // identifier	
-    INTLTR,		// int literal    ---  terminal
-    FLOATLTR,		// float literal   ---  terminal
+    INTLTR,		// int literal
+    FLOATLTR,		// float literal
     CONSTTK,		// const
     VOIDTK,		// void
     INTTK,		// int
@@ -57,6 +57,7 @@ enum class TokenType{
     NEQ,		// !=
     AND,        // &&
     OR,         // ||
+    NOTTOKEN
 };
 std::string toString(TokenType);
 
